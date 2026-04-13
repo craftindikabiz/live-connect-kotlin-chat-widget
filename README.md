@@ -75,7 +75,7 @@ In your app-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:main-SNAPSHOT")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.0")
     implementation("com.google.firebase:firebase-messaging:23.4.0")
 }
 ```
