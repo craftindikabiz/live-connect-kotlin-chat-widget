@@ -131,11 +131,15 @@ No code required beyond `LiveConnectChat.init(...)` in `onCreate`.
 
 ## Theming
 
-Quick: single-colour theme auto-generates the full palette.
+Quick: single-colour theme auto-generates the full palette. Pass it as the `theme` argument to `init`:
 
 ```kotlin
-val theme = LiveConnectTheme.fromPrimary(Color.parseColor("#4F46E5"))
-LiveConnectChat.init(this, "your-widget-key", visitor, theme)
+LiveConnectChat.init(
+    context = this,
+    widgetKey = "your-widget-key",
+    visitorDetails = VisitorProfile("John Doe", "john@example.com"),
+    theme = LiveConnectTheme.fromPrimary(Color.parseColor("#4F46E5")),
+)
 ```
 
 Detailed: use the builder for fine-grained control.
