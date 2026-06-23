@@ -358,15 +358,23 @@ object LiveConnectChat {
     private suspend fun registerFcmToken(token: String) {
         try {
             val profile = _visitorProfile ?: return
+            // On mobile the backend keys tokens by the app package name as the
+            // "domain" (mirrors Flutter, which sends PackageInfo.packageName).
+            // Both fields are REQUIRED by the backend — without them it returns 400.
+            val domain = _appContext?.packageName ?: run {
+                Log.w(TAG, "Cannot register FCM token: no app context for package name")
+                return
+            }
             val body = JSONObject().apply {
                 put("widgetKey", _widgetKey)
                 put("email", profile.email)
-                put("fcmToken", token)
+                put("token", token)
+                put("domain", domain)
             }
             val requestBody = body.toString()
                 .toRequestBody("application/json".toMediaType())
             RetrofitClient.apiService.registerFcmToken(requestBody)
-            Log.d(TAG, "FCM token registered")
+            Log.d(TAG, "FCM token registered (domain=$domain)")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register FCM token: ${e.message}")
         }
