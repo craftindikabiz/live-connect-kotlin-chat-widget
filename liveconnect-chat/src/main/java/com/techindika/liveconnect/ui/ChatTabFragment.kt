@@ -410,7 +410,15 @@ class ChatTabFragment : Fragment() {
         }
 
         socketEventManager.onMessageStatusUpdated = { event ->
-            conversationManager.updateMessageStatus(event.messageId, MessageStatus.fromString(event.status))
+            val status = MessageStatus.fromString(event.status)
+            val messageId = event.messageId
+            // Prefer a specific messageId; otherwise the event is a ticket-wide
+            // update (e.g. agent read all messages) — mirrors Flutter.
+            if (!messageId.isNullOrEmpty()) {
+                conversationManager.updateMessageStatus(messageId, status)
+            } else if (event.ticketId.isNotEmpty()) {
+                conversationManager.updateMessageStatusByTicketId(event.ticketId, status)
+            }
         }
 
         socketEventManager.onAgentTyping = { event ->
@@ -444,13 +452,19 @@ class ChatTabFragment : Fragment() {
         val optimisticId = socketEventManager.nextOptimisticId()
         socketEventManager.trackPendingMessage(optimisticId, text)
 
+        // Optimistic message starts at DELIVERED → shows the double "empty" (grey)
+        // tick, i.e. "sent, not yet read". The backend never echoes the visitor's
+        // own message and emits no "sent"/"delivered" event — its only status
+        // signal is messages:status_updated {ticketId, status:"read"} when the
+        // agent opens the chat. So the real progression is just:
+        //   ✓✓ grey (unread)  →  ✓✓ gold (read).
         val message = Message(
             id = optimisticId,
             text = text,
             sender = MessageSender.VISITOR,
             timestamp = Date(),
             attachment = attachment,
-            status = MessageStatus.SENDING
+            status = MessageStatus.DELIVERED
         )
         conversationManager.addMessageToActiveThread(message)
         inputEditText.text.clear()

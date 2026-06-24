@@ -172,7 +172,7 @@ internal class SocketEventManager(private val socketService: SocketService) {
     private fun handleMessageStatusUpdated(args: Array<Any>) {
         val json = parseJson(args) ?: return
         val event = MessageStatusEvent(
-            messageId = json.optString("messageId", ""),
+            messageId = json.optStringOrNull("messageId"),
             ticketId = json.optString("ticketId", ""),
             status = json.optString("status", "sent")
         )

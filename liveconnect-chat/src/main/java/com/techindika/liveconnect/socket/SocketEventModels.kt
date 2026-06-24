@@ -24,9 +24,13 @@ data class TicketResolvedEvent(
     val resolvedBy: String?
 )
 
-/** Emitted when message status is updated. */
+/**
+ * Emitted when message status is updated. The backend sends either a specific
+ * [messageId] (single message) or only a [ticketId] (mark the whole ticket's
+ * visitor messages read/delivered at once) — so [messageId] is nullable.
+ */
 data class MessageStatusEvent(
-    val messageId: String,
+    val messageId: String?,
     val ticketId: String,
     val status: String
 )

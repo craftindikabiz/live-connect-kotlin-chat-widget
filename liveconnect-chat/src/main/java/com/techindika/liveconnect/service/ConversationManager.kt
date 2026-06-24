@@ -117,6 +117,31 @@ internal class ConversationManager {
         }
     }
 
+    /**
+     * Ticket-wide status update. The backend's messages:status_updated event
+     * frequently carries only a ticketId (no messageId) — e.g. when the agent
+     * opens the chat and every visitor message is marked read at once. Without
+     * this path the double-tick never turns gold. Mirrors Flutter's
+     * updateMessageStatusByTicketId.
+     *  - DELIVERED: bump only SENT messages to DELIVERED
+     *  - READ: bump every not-yet-READ message to READ
+     */
+    fun updateMessageStatusByTicketId(ticketId: String, status: MessageStatus) {
+        val threadId = threadToTicket.entries.find { it.value == ticketId }?.key ?: return
+        updateThread(threadId) { thread ->
+            val updated = thread.messages.map { msg ->
+                when (status) {
+                    MessageStatus.DELIVERED ->
+                        if (msg.status == MessageStatus.SENT) msg.copyWith(status = status) else msg
+                    MessageStatus.READ ->
+                        if (msg.status != MessageStatus.READ) msg.copyWith(status = status) else msg
+                    else -> msg
+                }
+            }
+            thread.copyWith(messages = updated)
+        }
+    }
+
     /** Load API messages into a thread. */
     fun updateThreadMessages(threadId: String, messages: List<TicketMessage>) {
         updateThread(threadId) { thread ->
