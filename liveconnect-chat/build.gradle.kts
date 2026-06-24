@@ -118,7 +118,7 @@ publishing {
             artifactId = "live-connect-kotlin-chat-widget"
             version = (project.findProperty("VERSION_NAME") as String?)
                 ?: System.getenv("VERSION_NAME")
-                ?: "v1.0.6"
+                ?: "v1.0.7"
         }
     }
 }

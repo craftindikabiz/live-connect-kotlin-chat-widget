@@ -199,6 +199,16 @@ object LiveConnectChat {
         _initialized = true
         Log.d(TAG, "SDK initialized for widget: $widgetKey")
 
+        // If the consumer app called setFcmToken() before init finished (a common
+        // race — the cached FCM token often returns faster than the widget-config
+        // network round-trip), registration was skipped because _initialized was
+        // still false. Re-attempt it now that we're initialized and the profile is
+        // known. Mirrors Flutter, which registers as soon as the profile is set.
+        val pendingToken = _fcmToken
+        if (pendingToken != null && hasCompleteProfile) {
+            registerFcmToken(pendingToken)
+        }
+
         ApiResult.success(Unit)
     }
 

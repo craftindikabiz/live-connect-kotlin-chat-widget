@@ -283,7 +283,12 @@ class ChatTabFragment : Fragment() {
             email = profile.email,
             phone = profile.phone,
             firstMessage = thread?.firstMessage ?: thread?.lastMessage ?: "__resume__$ticketId",
-            ticketId = ticketId
+            ticketId = ticketId,
+            // On mobile the "domain" is the app package name. The backend stores it
+            // on the ticket and uses it (a) to find the visitor's FCM token and
+            // (b) to resolve the per-widget Firebase creds when pushing. Without it
+            // ticket.domain is null and pushes are silently skipped. Mirrors Flutter.
+            domain = LiveConnectChat.appContext?.packageName
         )
 
         socketService.onConnect = {
@@ -306,7 +311,10 @@ class ChatTabFragment : Fragment() {
             name = profile.name,
             email = profile.email,
             phone = profile.phone,
-            firstMessage = text
+            firstMessage = text,
+            // Send the package name as the ticket "domain" so the backend can push
+            // notifications to this visitor later (see connectSocketToResume). Mirrors Flutter.
+            domain = LiveConnectChat.appContext?.packageName
         )
 
         socketService.onConnect = {
