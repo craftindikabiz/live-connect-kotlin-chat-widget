@@ -69,7 +69,7 @@ internal class MessageAdapter(
         private val bubbleContainer: LinearLayout = itemView.findViewById(R.id.bubbleContainer)
         private val messageText: TextView = itemView.findViewById(R.id.messageText)
         private val timestamp: TextView = itemView.findViewById(R.id.timestamp)
-        private val statusIcon: TextView = itemView.findViewById(R.id.statusIcon)
+        private val statusIcon: ImageView = itemView.findViewById(R.id.statusIcon)
         private val attachmentImage: ImageView = itemView.findViewById(R.id.attachmentImage)
         private val attachmentDoc: LinearLayout = itemView.findViewById(R.id.attachmentDoc)
         private val docEmoji: TextView = itemView.findViewById(R.id.docEmoji)
@@ -82,24 +82,26 @@ internal class MessageAdapter(
 
             timestamp.text = TIME_FORMAT.get()!!.format(message.timestamp)
 
-            // Status icon — glyph + colour mirror Flutter's _buildStatusIndicator.
+            // Status icon — vector drawables (not font glyphs) so the ticks render
+            // identically across OEM fonts. Some devices (e.g. Vivo) lack the
+            // checkmark/hourglass glyphs and showed a tofu box before.
             // Read state uses golden so it stands out against the primary-colour bubble.
             when (message.status) {
                 MessageStatus.SENDING -> {
-                    statusIcon.text = "\u29D6" // ⧖ hourglass — clearer than the clock emoji on AOSP
-                    statusIcon.setTextColor(STATUS_COLOR_TRANSLUCENT_WHITE)
+                    statusIcon.setImageResource(R.drawable.lc_ic_clock)
+                    statusIcon.setColorFilter(STATUS_COLOR_TRANSLUCENT_WHITE)
                 }
                 MessageStatus.SENT -> {
-                    statusIcon.text = "\u2713" // ✓ single check
-                    statusIcon.setTextColor(STATUS_COLOR_TRANSLUCENT_WHITE)
+                    statusIcon.setImageResource(R.drawable.lc_ic_check_single)
+                    statusIcon.setColorFilter(STATUS_COLOR_TRANSLUCENT_WHITE)
                 }
                 MessageStatus.DELIVERED -> {
-                    statusIcon.text = "\u2713\u2713" // ✓✓ double check
-                    statusIcon.setTextColor(STATUS_COLOR_TRANSLUCENT_WHITE)
+                    statusIcon.setImageResource(R.drawable.lc_ic_check_double)
+                    statusIcon.setColorFilter(STATUS_COLOR_TRANSLUCENT_WHITE)
                 }
                 MessageStatus.READ -> {
-                    statusIcon.text = "\u2713\u2713" // ✓✓ double check, golden
-                    statusIcon.setTextColor(STATUS_COLOR_GOLD)
+                    statusIcon.setImageResource(R.drawable.lc_ic_check_double)
+                    statusIcon.setColorFilter(STATUS_COLOR_GOLD)
                 }
             }
 

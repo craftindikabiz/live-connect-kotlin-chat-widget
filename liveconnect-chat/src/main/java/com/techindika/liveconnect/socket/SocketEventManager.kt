@@ -231,7 +231,9 @@ internal class SocketEventManager(private val socketService: SocketService) {
     /** Convert a socket message JSON to a Message model. */
     private fun convertSocketMessage(json: JSONObject): Message {
         val id = json.optString("_id", json.optString("id", ""))
-        val content = json.optString("content", "")
+        // optStringOrNull guards against explicit JSON null, which org.json would
+        // otherwise surface as the literal string "null" in the bubble.
+        val content = json.optStringOrNull("content") ?: ""
         val senderType = MessageSender.fromString(json.optString("senderType", "system"))
         val statusStr = json.optString("status", "sent")
         val status = MessageStatus.fromString(statusStr)
@@ -241,9 +243,9 @@ internal class SocketEventManager(private val socketService: SocketService) {
         val timestamp = parseIsoDate(createdAtStr) ?: Date()
 
         // Parse attachment if present
-        val fileUrl = json.optString("fileUrl", "")
-        val fileName = json.optString("fileName", "")
-        val fileType = json.optString("fileType", "")
+        val fileUrl = json.optStringOrNull("fileUrl") ?: ""
+        val fileName = json.optStringOrNull("fileName") ?: ""
+        val fileType = json.optStringOrNull("fileType") ?: ""
         val attachment = if (fileUrl.isNotEmpty()) {
             val mimeType = normalizeMimeType(fileType)
             val type = if (mimeType.startsWith("image/")) AttachmentType.MEDIA else AttachmentType.DOCUMENT

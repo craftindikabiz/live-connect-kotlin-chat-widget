@@ -81,13 +81,12 @@
                 android:textColor="#B3FFFFFF"
                 android:textSize="@dimen/lc_message_timestamp_size" />
 
-            <TextView
+            <ImageView
                 android:id="@+id/statusIcon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#B3FFFFFF"
-                android:textSize="11sp"
-                android:layout_marginStart="4dp" />
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginStart="4dp"
+                android:contentDescription="Message status" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
