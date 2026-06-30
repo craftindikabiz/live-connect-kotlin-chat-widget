@@ -20,7 +20,7 @@
             android:contentDescription="Widget icon" />
     </FrameLayout>
 
-    <!-- Title (single line — matches Flutter EnhancedChatHeader) -->
+    <!-- Title (single line) -->
     <TextView
         android:id="@+id/headerTitle"
         android:layout_width="0dp"

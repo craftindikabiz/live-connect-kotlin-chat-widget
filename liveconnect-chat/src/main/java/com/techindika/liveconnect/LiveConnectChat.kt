@@ -203,7 +203,7 @@ object LiveConnectChat {
         // race — the cached FCM token often returns faster than the widget-config
         // network round-trip), registration was skipped because _initialized was
         // still false. Re-attempt it now that we're initialized and the profile is
-        // known. Mirrors Flutter, which registers as soon as the profile is set.
+        // known. Registration should happen as soon as the profile is set.
         val pendingToken = _fcmToken
         if (pendingToken != null && hasCompleteProfile) {
             registerFcmToken(pendingToken)
@@ -269,7 +269,7 @@ object LiveConnectChat {
      * Auto-sync rule: if the developer changed `primaryColor` but left
      * `visitorBubbleColor` unchanged (i.e. it still equals the OLD primary),
      * we propagate the new primary into all 14 primary-dependent colour
-     * fields. Mirrors Flutter's `setTheme` in `liveconnect_chat.dart`.
+     * fields.
      */
     @JvmStatic
     fun setTheme(theme: LiveConnectTheme) {
@@ -348,8 +348,6 @@ object LiveConnectChat {
      * Public counterpart to [registerVisitorProfile] — callable from app code
      * after [init] to update the visitor's name/email/phone.
      *
-     * Mirrors Flutter's `LiveConnectChat.updateVisitorProfile`.
-     *
      * @param updatedProfile new visitor details
      * @param callback fires with `true` on success, `false` on failure
      */
@@ -369,7 +367,7 @@ object LiveConnectChat {
         try {
             val profile = _visitorProfile ?: return
             // On mobile the backend keys tokens by the app package name as the
-            // "domain" (mirrors Flutter, which sends PackageInfo.packageName).
+            // "domain" (the app package name is sent as that value).
             // Both fields are REQUIRED by the backend — without them it returns 400.
             val domain = _appContext?.packageName ?: run {
                 Log.w(TAG, "Cannot register FCM token: no app context for package name")

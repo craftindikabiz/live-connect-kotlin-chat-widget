@@ -39,7 +39,7 @@ class TicketStorageTest {
         TicketStorage.clearActiveTicketId(context, "wk", "v1")
 
         assertNull(TicketStorage.loadActiveTicketId(context, "wk", "v1"))
-        // Status must also be cleared per Flutter behaviour
+        // Status must also be cleared
         assertNull(TicketStorage.loadTicketStatus(context, "wk", "v1"))
     }
 

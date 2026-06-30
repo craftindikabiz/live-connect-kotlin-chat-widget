@@ -44,7 +44,6 @@ class ActivityTabFragment : Fragment() {
 
         ticketAdapter = TicketAdapter(LiveConnectChat.currentTheme) { ticket ->
             // Tell the Chat tab to open this ticket, then switch tabs.
-            // Mirrors Flutter's _handleThreadSelect.
             vm.selectThread(ticket.id)
             (activity as? ChatActivity)?.switchToTab(0)
         }

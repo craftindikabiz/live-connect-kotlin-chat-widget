@@ -41,7 +41,7 @@ internal object TicketStorage {
 
     fun clearActiveTicketId(context: Context, widgetKey: String, visitorId: String) {
         prefs(context).edit().remove(ticketKey(widgetKey, visitorId)).apply()
-        // Clearing the ticket also clears its status (matches Flutter behaviour).
+        // Clearing the ticket also clears its status.
         clearTicketStatus(context, widgetKey, visitorId)
     }
 

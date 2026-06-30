@@ -14,8 +14,6 @@ import org.robolectric.RobolectricTestRunner
  * `visitorBubbleColor` at the OLD primary, the new primary propagates
  * into all primary-dependent fields. If the developer overrode
  * `visitorBubbleColor` explicitly, no propagation happens.
- *
- * Mirrors Flutter's `LiveConnectChat.setTheme` in `liveconnect_chat.dart`.
  */
 @RunWith(RobolectricTestRunner::class)
 class LiveConnectChatThemeAutoSyncTest {

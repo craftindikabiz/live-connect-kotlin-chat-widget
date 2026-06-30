@@ -63,8 +63,7 @@ class MemberDetailsDialogFragment : BottomSheetDialogFragment() {
             } else {
                 nameLayout.error = null
             }
-            // Accept either an email or a username — matches Flutter's
-            // VisitorProfileValidator (no strict @ check, just length).
+            // Accept either an email or a username (no strict @ check, just length).
             if (email.isBlank() || email.length > 254) {
                 emailLayout.error = "Email or username is required"
                 valid = false

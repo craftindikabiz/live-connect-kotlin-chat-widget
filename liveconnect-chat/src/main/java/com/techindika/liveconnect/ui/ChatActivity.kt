@@ -140,8 +140,8 @@ class ChatActivity : AppCompatActivity() {
         val showMenu = position == 0 && viewModel.conversationManager.activeTicketId != null
         menuButton.visibility = if (showMenu) View.VISIBLE else View.GONE
 
-        // Mirrors Flutter's _onTabChanged: emit message:read whenever the chat tab
-        // becomes active so the agent dashboard updates the visitor's read state.
+        // Emit message:read whenever the chat tab becomes active so the agent
+        // dashboard updates the visitor's read state.
         if (position == 0) {
             val ticketId = viewModel.conversationManager.activeTicketId
             if (ticketId != null && viewModel.socketService.isConnected) {

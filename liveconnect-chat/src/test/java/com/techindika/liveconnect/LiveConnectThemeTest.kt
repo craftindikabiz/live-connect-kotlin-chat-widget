@@ -68,7 +68,6 @@ class LiveConnectThemeTest {
     @Test
     fun `new round 6 fields have sane defaults`() {
         val theme = LiveConnectTheme.defaults()
-        // From the upstream Flutter port:
         assertEquals("", theme.readOnlyMessagesText)
         assertNotNull(theme.broadcastMessageBackgroundColor)
         assertEquals(Color.WHITE, theme.ratingDialogBackgroundColor)

@@ -66,7 +66,7 @@ internal class SocketService private constructor() {
 
             val options = IO.Options.builder()
                 .setAuth(auth)
-                .setTransports(arrayOf("websocket"))
+                .setTransports(arrayOf("websocket", "polling"))
                 .setReconnection(true)
                 .setReconnectionAttempts(10)
                 .setReconnectionDelay(1000)

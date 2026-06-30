@@ -33,9 +33,8 @@ class VisitorProfileTest {
     }
 
     @Test
-    fun `isComplete accepts username (no @ required) — matches Flutter`() {
-        // Flutter's VisitorProfileValidator no longer requires email format —
-        // a bare username is valid.
+    fun `isComplete accepts username (no @ required)`() {
+        // Email format is not required — a bare username is valid.
         val p = VisitorProfile("John", "johndoe")
         assertTrue(p.isComplete)
     }

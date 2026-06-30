@@ -141,7 +141,7 @@ class ChatTabFragment : Fragment() {
 
     /**
      * Switch the active thread to the one matching the given ticket id and
-     * pull its messages from the API. Mirrors Flutter's _handleThreadSelect.
+     * pull its messages from the API.
      */
     private fun openTicket(ticketId: String) {
         // Find the local thread that maps to this ticket id
@@ -184,7 +184,7 @@ class ChatTabFragment : Fragment() {
                     withContext(Dispatchers.Main) {
                         conversationManager.initializeFromTickets(result.tickets)
 
-                        // ── Two-tier resumption strategy (matches Flutter) ──
+                        // ── Two-tier resumption strategy ──
                         var ticketToResumeId: String? = null
 
                         // Tier 1: try the stored ticket id, but only if it's still OPEN.
@@ -287,7 +287,7 @@ class ChatTabFragment : Fragment() {
             // On mobile the "domain" is the app package name. The backend stores it
             // on the ticket and uses it (a) to find the visitor's FCM token and
             // (b) to resolve the per-widget Firebase creds when pushing. Without it
-            // ticket.domain is null and pushes are silently skipped. Mirrors Flutter.
+            // ticket.domain is null and pushes are silently skipped.
             domain = LiveConnectChat.appContext?.packageName
         )
 
@@ -313,7 +313,7 @@ class ChatTabFragment : Fragment() {
             phone = profile.phone,
             firstMessage = text,
             // Send the package name as the ticket "domain" so the backend can push
-            // notifications to this visitor later (see connectSocketToResume). Mirrors Flutter.
+            // notifications to this visitor later (see connectSocketToResume).
             domain = LiveConnectChat.appContext?.packageName
         )
 
@@ -346,7 +346,6 @@ class ChatTabFragment : Fragment() {
         }
 
         // Agent reassigned during an active session — update the AgentInfoChip.
-        // Mirrors Flutter's _handleTicketAssigned in SocketEventManager.
         socketEventManager.onTicketAssigned = { agent ->
             currentAgent = agent
         }
@@ -413,7 +412,7 @@ class ChatTabFragment : Fragment() {
             val status = MessageStatus.fromString(event.status)
             val messageId = event.messageId
             // Prefer a specific messageId; otherwise the event is a ticket-wide
-            // update (e.g. agent read all messages) — mirrors Flutter.
+            // update (e.g. agent read all messages).
             if (!messageId.isNullOrEmpty()) {
                 conversationManager.updateMessageStatus(messageId, status)
             } else if (event.ticketId.isNotEmpty()) {
@@ -424,7 +423,7 @@ class ChatTabFragment : Fragment() {
         socketEventManager.onAgentTyping = { event ->
             // Only show the typing bubble if the event is for the currently active
             // ticket — otherwise typing on an old/closed conversation would leak
-            // into the visible chat. Mirrors Flutter's chat_screen_tabbed.dart.
+            // into the visible chat.
             if (event.ticketId == conversationManager.activeTicketId) {
                 // Surface to UI once a typing-bubble view is wired up.
                 // For now the scoping itself is the bug fix.
@@ -452,19 +451,22 @@ class ChatTabFragment : Fragment() {
         val optimisticId = socketEventManager.nextOptimisticId()
         socketEventManager.trackPendingMessage(optimisticId, text)
 
-        // Optimistic message starts at DELIVERED → shows the double "empty" (grey)
-        // tick, i.e. "sent, not yet read". The backend never echoes the visitor's
-        // own message and emits no "sent"/"delivered" event — its only status
-        // signal is messages:status_updated {ticketId, status:"read"} when the
-        // agent opens the chat. So the real progression is just:
-        //   ✓✓ grey (unread)  →  ✓✓ gold (read).
+        // Optimistic message starts at SENT → single grey tick (a new Message
+        // defaults to MessageStatus.sent). The full
+        // WhatsApp-style progression is driven entirely by backend events:
+        //   ✓  grey  (sent)      — optimistic, set here
+        //   → backend echoes message:received for our own message, which
+        //     replaceOptimisticMessage() swaps in (server keeps status "sent")
+        //   ✓✓ grey  (delivered) — messages:status_updated {status:"delivered"}
+        //   ✓✓ gold  (read)      — messages:status_updated {status:"read"} when
+        //                          the agent opens the chat
         val message = Message(
             id = optimisticId,
             text = text,
             sender = MessageSender.VISITOR,
             timestamp = Date(),
             attachment = attachment,
-            status = MessageStatus.DELIVERED
+            status = MessageStatus.SENT
         )
         conversationManager.addMessageToActiveThread(message)
         inputEditText.text.clear()
@@ -512,8 +514,12 @@ class ChatTabFragment : Fragment() {
         } else {
             messageRecyclerView.visibility = View.VISIBLE
             emptyChatState.visibility = View.GONE
-            messageAdapter.submitList(messages)
-            messageRecyclerView.scrollToPosition(messages.size - 1)
+            // ListAdapter diffs asynchronously, so scrolling must wait for the
+            // commit callback — scrolling synchronously here would target the old
+            // item count and miss the just-arrived message.
+            messageAdapter.submitList(messages) {
+                messageRecyclerView.scrollToPosition(messageAdapter.itemCount - 1)
+            }
         }
 
         // Read-only mode
@@ -527,7 +533,7 @@ class ChatTabFragment : Fragment() {
         }
 
         // ── Starter suggestions ────────────────────────────────────────────
-        // Mirrors Flutter's chat_screen_tabbed.dart:
+        // Suggestions are shown when:
         //   showSuggestions = !hasVisitorMessages && activeThread.isActive
         //                     && theme.suggestedMessages.isNotEmpty
         // This reappears naturally after a resolve because
@@ -539,7 +545,7 @@ class ChatTabFragment : Fragment() {
     /**
      * Tint the empty-state icon + circle from the active theme. Called once
      * at onViewCreated; the drawables honour theme.emptyChatIconColor and a
-     * derived 8% primary tint for the circle (matches Flutter's default).
+     * derived 8% primary tint for the circle.
      */
     private fun applyEmptyStateTheme(theme: LiveConnectTheme) {
         val v = view ?: return
@@ -548,7 +554,7 @@ class ChatTabFragment : Fragment() {
         val title = v.findViewById<android.widget.TextView>(R.id.emptyTitle)
         val desc = v.findViewById<android.widget.TextView>(R.id.emptyDescription)
 
-        // Circle background at 8% primary (matches Flutter's default derivation)
+        // Circle background at 8% primary
         val circleBg = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.OVAL
             setColor(LiveConnectTheme.withAlphaColor(theme.emptyChatIconColor, 0.08f))
@@ -567,8 +573,7 @@ class ChatTabFragment : Fragment() {
      *  - the visitor hasn't sent any message yet in this thread, AND
      *  - theme.suggestedMessages is non-empty.
      *
-     * Tapping a chip sends it as a visitor message immediately — matches
-     * Flutter's _handleSuggestedMessageTap.
+     * Tapping a chip sends it as a visitor message immediately.
      */
     private fun renderSuggestions(thread: ConversationThread) {
         val theme = LiveConnectChat.currentTheme

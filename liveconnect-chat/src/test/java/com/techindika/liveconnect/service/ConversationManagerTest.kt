@@ -125,7 +125,7 @@ class ConversationManagerTest {
         val freshThreadId = manager.activeThreadId.value!!
 
         // Server then returns a list of tickets that does NOT include our fresh thread.
-        // The fresh thread should be PREPENDED and remain active — Flutter parity.
+        // The fresh thread should be PREPENDED and remain active.
         val apiTickets = listOf(ticket("api-1", "resolved"))
         manager.updateThreadsFromTickets(apiTickets)
 

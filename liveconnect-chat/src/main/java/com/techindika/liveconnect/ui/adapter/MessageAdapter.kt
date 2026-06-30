@@ -120,7 +120,6 @@ internal class MessageAdapter(
                 docEmoji.text = attachment.typeEmoji
                 docName.text = attachment.filename
                 // Open the document in the user's default handler on tap.
-                // Mirrors Flutter's url_launcher path in message_bubble.dart.
                 attachmentDoc.setOnClickListener { v ->
                     openAttachment(v, attachment.filePath)
                 }
@@ -184,7 +183,6 @@ internal class MessageAdapter(
             systemText.text = message.text
             // Broadcast events (e.g. "Chat reassigned to John") use a distinct colour
             // so they don't visually compete with regular system notices.
-            // Mirrors Flutter's _buildBroadcastChip vs _buildSystemMessage.
             if (message.sender == MessageSender.BROADCAST) {
                 systemText.setTextColor(theme.agentTextColor)
                 systemText.background?.setTint(theme.broadcastMessageBackgroundColor)
@@ -198,7 +196,7 @@ internal class MessageAdapter(
     companion object {
         /**
          * Open a remote attachment URL in the OS default handler (browser, PDF
-         * viewer, etc.). Mirrors Flutter's `url_launcher` behaviour. No-op on
+         * viewer, etc.). No-op on
          * empty url or activity-not-found — failure is silent rather than crashy.
          */
         private fun openAttachment(anchor: View, url: String) {
@@ -217,7 +215,7 @@ internal class MessageAdapter(
         private const val VIEW_TYPE_SYSTEM = 2
 
         // Status icon colours on visitor (primary-coloured) bubbles.
-        // Translucent white = sent/delivered, gold = read — matches Flutter intent.
+        // Translucent white = sent/delivered, gold = read.
         private const val STATUS_COLOR_TRANSLUCENT_WHITE = 0xB3FFFFFF.toInt()
         private const val STATUS_COLOR_GOLD = 0xFFFFD700.toInt()
 

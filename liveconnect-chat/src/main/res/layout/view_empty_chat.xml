@@ -3,7 +3,7 @@
     "Start a conversation" splash. Shown when the active thread has zero
     messages — including immediately after a ticket:resolved, when
     ConversationManager.markActiveThreadAsResolved() creates a fresh
-    empty thread. Mirrors Flutter's EmptyChatState widget.
+    empty thread.
 
     The icon colour + circle background are tinted per-theme from
     ChatTabFragment.applyEmptyStateTheme() — do not set static colours here.
@@ -16,7 +16,7 @@
     android:gravity="center"
     android:padding="32dp">
 
-    <!-- Icon circle — 72dp per Flutter design -->
+    <!-- Icon circle — 72dp -->
     <FrameLayout
         android:id="@+id/emptyIconCircle"
         android:layout_width="@dimen/lc_empty_chat_icon_size"
