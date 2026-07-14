@@ -21,6 +21,7 @@ import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import com.techindika.liveconnect.LiveConnectChat
 import com.techindika.liveconnect.R
+import com.techindika.liveconnect.service.UnreadCountService
 
 /**
  * Main chat Activity hosting two tabs: Chat and Activity.
@@ -36,6 +37,8 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        LiveConnectChat.chatScreenOpen = true
 
         // Edge-to-edge so the activity draws under status + nav bars; we apply
         // the system-bar + IME insets as padding on the root view ourselves so
@@ -151,6 +154,33 @@ class ChatActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * The visitor is looking at the conversation — clear the unread badge.
+     *
+     * Done here rather than in [onCreate] so it also covers the two paths that skip
+     * onCreate: a notification tap that FLAG_ACTIVITY_SINGLE_TOP routes to the
+     * existing instance (onNewIntent → onResume), and simply returning to a chat
+     * screen that was backgrounded while pushes were arriving (onRestart → onResume).
+     *
+     * Ordering note: the app-foreground listener in LiveConnectChat reloads the count
+     * from disk on onActivityStarted, which runs before onResume — so this clear
+     * lands last and wins.
+     */
+    override fun onResume() {
+        super.onResume()
+        UnreadCountService.markAllRead()
+    }
+
+    /**
+     * A push that arrived while the visitor was reading the chat shouldn't leave a
+     * stale badge behind once they leave the screen.
+     */
+    override fun onDestroy() {
+        LiveConnectChat.chatScreenOpen = false
+        UnreadCountService.markAllRead()
+        super.onDestroy()
     }
 
     private fun showHeaderMenu(anchor: View) {

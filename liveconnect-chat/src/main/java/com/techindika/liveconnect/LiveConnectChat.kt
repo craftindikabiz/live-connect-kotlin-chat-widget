@@ -1,7 +1,10 @@
 package com.techindika.liveconnect
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -10,6 +13,7 @@ import com.techindika.liveconnect.model.VisitorProfile
 import com.techindika.liveconnect.model.WidgetConfig
 import com.techindika.liveconnect.network.ApiResult
 import com.techindika.liveconnect.network.RetrofitClient
+import com.techindika.liveconnect.service.UnreadCountService
 import com.techindika.liveconnect.service.VisitorProfileStore
 import com.techindika.liveconnect.ui.ChatActivity
 import kotlinx.coroutines.*
@@ -48,6 +52,8 @@ object LiveConnectChat {
     private var _firebaseServiceAccount: Map<String, Any>? = null
     private var _appContext: Context? = null
     private var _visitorId: String? = null
+    @Volatile private var _chatScreenOpen = false
+    private var _resumeRefreshRegistered = false
 
     private var scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -64,8 +70,39 @@ object LiveConnectChat {
     @JvmStatic val widgetConfig: WidgetConfig? get() = _widgetConfig
     @JvmStatic val themeVersion: LiveData<Int> get() = _themeVersion
 
+    /** Whether the chat screen is currently open. */
+    @JvmStatic val isChatScreenOpen: Boolean get() = _chatScreenOpen
+
+    /**
+     * Total unread message count, so a badge can be shown anywhere in the app —
+     * not just on the built-in [com.techindika.liveconnect.ui.view.FloatingChatButton].
+     *
+     * The count is persisted locally and updates from two sources:
+     * - The `ticket:unread_count` socket event while the chat screen is open.
+     * - [registerIncomingPush], which the app calls from its FCM handlers, so the
+     *   count reflects messages received while chat is closed (including while
+     *   the app is fully terminated).
+     *
+     * It resets to zero whenever the chat screen is opened.
+     *
+     * ```kotlin
+     * LiveConnectChat.totalUnreadCount.observe(this) { count ->
+     *     badge.isVisible = count > 0
+     *     badge.text = if (count > 99) "99+" else count.toString()
+     * }
+     * ```
+     */
+    @JvmStatic val totalUnreadCount: LiveData<Int> get() = UnreadCountService.totalUnreadCount
+
     internal val appContext: Context? get() = _appContext
     internal val visitorId: String? get() = _visitorId
+
+    /** Set by [ChatActivity] as it is created / destroyed. */
+    internal var chatScreenOpen: Boolean
+        get() = _chatScreenOpen
+        set(value) {
+            _chatScreenOpen = value
+        }
 
     // ── Initialization ──
 
@@ -128,6 +165,9 @@ object LiveConnectChat {
 
         _appContext = context.applicationContext
         _widgetKey = widgetKey
+
+        UnreadCountService.initFromStorage(_appContext!!)
+        ensureUnreadCountResumeRefresh(_appContext!!)
 
         // Apply user theme if provided
         if (theme != null) {
@@ -212,10 +252,46 @@ object LiveConnectChat {
         ApiResult.success(Unit)
     }
 
+    /**
+     * Register (once) an app-lifecycle listener that reloads the unread count from
+     * storage whenever the app returns to the foreground.
+     */
+    private fun ensureUnreadCountResumeRefresh(context: Context) {
+        if (_resumeRefreshRegistered) return
+        val app = context.applicationContext as? Application ?: return
+
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            private var startedActivities = 0
+
+            override fun onActivityStarted(activity: Activity) {
+                if (startedActivities == 0) {
+                    Log.d(TAG, "App resumed — refreshing unread count from storage")
+                    UnreadCountService.initFromStorage(activity.applicationContext)
+                }
+                startedActivities++
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                if (startedActivities > 0) startedActivities--
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
+
+        _resumeRefreshRegistered = true
+        Log.d(TAG, "Unread-count resume observer registered")
+    }
+
     // ── Show / Hide ──
 
     /**
      * Open the chat screen. If visitor profile is incomplete, a form is shown first.
+     *
+     * No-op if the chat screen is already open — it won't stack a duplicate on top.
      *
      * @param context Activity context (required for starting Activity).
      */
@@ -224,11 +300,96 @@ object LiveConnectChat {
         check(_initialized && _widgetKey != null) {
             "Call LiveConnectChat.init() before LiveConnectChat.show()"
         }
-        val intent = Intent(context, ChatActivity::class.java).apply {
-            putExtra(ChatActivity.EXTRA_WIDGET_KEY, _widgetKey)
-            putExtra(ChatActivity.EXTRA_SHOW_CLOSE_BUTTON, true)
+        if (_chatScreenOpen) {
+            Log.d(TAG, "Chat screen already open — ignoring duplicate open request")
+            return
         }
-        context.startActivity(intent)
+        context.startActivity(chatIntent(context))
+    }
+
+    /**
+     * Open the chat screen from outside an Activity — a `FirebaseMessagingService`,
+     * a `BroadcastReceiver`, or a notification tap that cold-starts the app after it
+     * was fully closed.
+     *
+     * Unlike [show], this does not assume [context] is an Activity: it adds
+     * `FLAG_ACTIVITY_NEW_TASK` so the chat screen can be launched from an
+     * application context.
+     *
+     * ```kotlin
+     * class MyMessagingService : FirebaseMessagingService() {
+     *     override fun onMessageReceived(message: RemoteMessage) {
+     *         LiveConnectChat.showFromNotification(this)
+     *     }
+     * }
+     * ```
+     *
+     * If the chat screen is already open — e.g. the app was backgrounded while chat
+     * was visible and the user tapped another notification — `FLAG_ACTIVITY_SINGLE_TOP`
+     * makes Android reuse that instance and bring its task to the foreground rather
+     * than stacking a duplicate on top of it. (Deliberately not short-circuited on
+     * [isChatScreenOpen]: returning early here would leave the chat screen sitting in
+     * the background, so the notification tap would appear to do nothing.)
+     *
+     * @return `true` if the chat screen was opened, `false` if [init] hasn't been
+     *   called yet.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun showFromNotification(context: Context, showCloseButton: Boolean = true): Boolean {
+        if (!_initialized || _widgetKey == null) {
+            Log.w(TAG, "showFromNotification() called before init()")
+            return false
+        }
+        context.startActivity(
+            chatIntent(context, showCloseButton).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+        )
+        return true
+    }
+
+    /** SINGLE_TOP because ChatActivity is `launchMode="standard"` — without it a
+     *  second open request stacks a duplicate chat screen behind the first. */
+    private fun chatIntent(context: Context, showCloseButton: Boolean = true): Intent =
+        Intent(context, ChatActivity::class.java).apply {
+            putExtra(ChatActivity.EXTRA_WIDGET_KEY, _widgetKey)
+            putExtra(ChatActivity.EXTRA_SHOW_CLOSE_BUTTON, showCloseButton)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+    // ── Unread count ──
+
+    /**
+     * Register that a chat push notification was received outside the chat screen,
+     * incrementing [totalUnreadCount] by one.
+     *
+     * Call this from the app's FCM listener so the badge stays accurate regardless
+     * of app state:
+     * ```kotlin
+     * class MyMessagingService : FirebaseMessagingService() {
+     *     override fun onMessageReceived(message: RemoteMessage) {
+     *         LiveConnectChat.registerIncomingPush(this, message.data["ticketId"])
+     *         // ... then show the notification
+     *     }
+     * }
+     * ```
+     *
+     * Safe to call before [init] — FCM starts the app's process to deliver a push
+     * even when the app is fully closed, and the count is written straight to disk
+     * rather than relying on the SDK being initialized.
+     *
+     * Don't call this for the message the user *tapped* to open chat (the tap
+     * handler that calls [show] / [showFromNotification]) — opening the chat screen
+     * already clears the count.
+     *
+     * @param context any Context (a Service, a Receiver, or an Activity).
+     * @param ticketId optional, e.g. `message.data["ticketId"]`.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun registerIncomingPush(context: Context, ticketId: String? = null) {
+        UnreadCountService.registerIncomingPush(context, ticketId)
     }
 
     // ── FCM ──
