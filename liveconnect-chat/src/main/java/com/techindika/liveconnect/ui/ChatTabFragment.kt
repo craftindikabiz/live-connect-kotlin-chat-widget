@@ -350,8 +350,9 @@ class ChatTabFragment : Fragment() {
             currentAgent = agent
         }
 
-        // Show a toast when the socket drops; the underlying socket.io client
-        // handles reconnection attempts itself, so we only need to surface the state.
+        // Show a toast when the socket drops. socket.io retries on its own while we're
+        // in the foreground; if it drops because the app was backgrounded, onResume()
+        // re-establishes it — see ensureSocketConnected().
         socketEventManager.onSocketDisconnect = { _ ->
             isSocketConnected = false
             if (isAdded) {
@@ -361,6 +362,13 @@ class ChatTabFragment : Fragment() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+
+        // Without this the flag stays true after a failed dial, and the
+        // isSocketConnecting guard below silently blocks every later attempt.
+        socketService.onConnectError = {
+            isSocketConnecting = false
+            isSocketConnected = false
         }
 
         socketEventManager.onTicketResumed = handler@{ event ->
@@ -686,6 +694,42 @@ class ChatTabFragment : Fragment() {
             }
         }
         dialog.show(parentFragmentManager, "rating_dialog")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ensureSocketConnected()
+    }
+
+    /**
+     * Re-establish the socket if it died while we were in the background.
+     *
+     * Android tears the TCP connection down once the app has been backgrounded for a
+     * while (Doze, app standby, a Wi-Fi/cellular handoff), and socket.io cannot retry
+     * its way out of that from a process the OS is holding down. Nothing else in the
+     * screen's lifecycle re-dials — the Activity is only stopped, not recreated, so
+     * the initial connect in loadTickets() never runs again — which left the chat
+     * silently dead on return: no incoming messages, and sends dropped by the
+     * `isConnected` guard in [SocketService.emit].
+     *
+     * Also refetches the thread, since anything the agent sent while we were
+     * disconnected was missed by the socket.
+     */
+    private fun ensureSocketConnected() {
+        val ticketId = conversationManager.activeTicketId ?: return
+        if (socketService.isConnected) return
+
+        Log.d(TAG, "Socket not connected on resume — re-establishing (ticket=$ticketId)")
+        isSocketConnected = false
+        isSocketConnecting = false
+
+        if (socketService.canReconnect) {
+            socketService.reconnect()
+        } else {
+            connectSocketToResume(ticketId)
+        }
+
+        loadMessagesForTicket(ticketId)
     }
 
     override fun onDestroyView() {

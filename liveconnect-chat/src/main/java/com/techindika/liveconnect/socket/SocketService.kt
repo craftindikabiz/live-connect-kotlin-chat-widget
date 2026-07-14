@@ -18,6 +18,25 @@ internal class SocketService private constructor() {
     var isConnected = false
         private set
 
+    /** Arguments of the last [connect], so [reconnect] can rebuild the same session. */
+    private var lastConnectArgs: ConnectArgs? = null
+
+    private data class ConnectArgs(
+        val widgetKey: String,
+        val name: String,
+        val email: String,
+        val phone: String,
+        val firstMessage: String,
+        val ticketId: String?,
+        val domain: String?
+    )
+
+    /**
+     * True if a session was established and has not been torn down by [disconnect] —
+     * i.e. any current disconnection is involuntary and [reconnect] can recover it.
+     */
+    val canReconnect: Boolean get() = lastConnectArgs != null
+
     var onConnect: (() -> Unit)? = null
     var onDisconnect: ((String) -> Unit)? = null
     var onConnectError: ((Exception) -> Unit)? = null
@@ -50,6 +69,8 @@ internal class SocketService private constructor() {
             return
         }
         isConnecting = true
+        lastConnectArgs =
+            ConnectArgs(widgetKey, name, email, phone, firstMessage, ticketId, domain)
 
         try {
             // Build auth payload
@@ -68,8 +89,17 @@ internal class SocketService private constructor() {
                 .setAuth(auth)
                 .setTransports(arrayOf("websocket", "polling"))
                 .setReconnection(true)
-                .setReconnectionAttempts(10)
+                // Retry forever. A capped budget is exhausted within ~40s while the
+                // app sits in the background — Doze blocks the socket's network
+                // access, every attempt fails, and socket.io then gives up
+                // permanently, leaving a dead socket behind when the user returns.
+                .setReconnectionAttempts(Integer.MAX_VALUE)
                 .setReconnectionDelay(1000)
+                .setReconnectionDelayMax(5000)
+                // Never reuse a cached Manager/Socket for this URI: reconnect() tears
+                // the old one down, and a reused instance would re-add every listener
+                // in eventListeners on top of its existing ones (duplicate messages).
+                .setForceNew(true)
                 .build()
 
             val uri = URI.create("${ApiConstants.SOCKET_URL}${ApiConstants.SOCKET_NAMESPACE}")
@@ -144,6 +174,42 @@ internal class SocketService private constructor() {
         socket?.emit(event)
     }
 
+    /**
+     * Rebuild the connection after it was dropped by something outside our control —
+     * typically the OS tearing down the TCP connection while the app was backgrounded.
+     *
+     * Tears the old socket down and dials again with the same auth, rather than
+     * leaning on socket.io's internal retry loop, whose backoff timers are deferred
+     * (and whose network access is blocked) for as long as the app is in Doze.
+     *
+     * No-op if already connected, or if [connect] was never called / [disconnect] was
+     * called deliberately — a resolved ticket must stay closed.
+     */
+    fun reconnect() {
+        if (isConnected || isConnecting) return
+        val args = lastConnectArgs ?: run {
+            Log.d(TAG, "reconnect() with no prior session — nothing to restore")
+            return
+        }
+
+        Log.d(TAG, "Reconnecting socket (ticketId=${args.ticketId})")
+        socket?.disconnect()
+        socket?.off()
+        socket = null
+        isConnected = false
+        isConnecting = false
+
+        connect(
+            widgetKey = args.widgetKey,
+            name = args.name,
+            email = args.email,
+            phone = args.phone,
+            firstMessage = args.firstMessage,
+            ticketId = args.ticketId,
+            domain = args.domain
+        )
+    }
+
     /** Disconnect and clean up. */
     fun disconnect() {
         Log.d(TAG, "Disconnecting socket")
@@ -152,6 +218,8 @@ internal class SocketService private constructor() {
         socket = null
         isConnected = false
         isConnecting = false
+        // Deliberate teardown — reconnect() must not resurrect this session.
+        lastConnectArgs = null
     }
 
     companion object {
