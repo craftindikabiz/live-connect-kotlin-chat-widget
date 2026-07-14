@@ -46,7 +46,7 @@ In your **app-module** `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.12")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.13")
 }
 ```
 
@@ -68,7 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.12")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.13")
 }
 ```
 
@@ -198,6 +198,69 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
 
 ---
 
+## Opening chat from a notification tap
+
+`show(context)` expects an Activity context. To open the chat screen from a `FirebaseMessagingService`, a `BroadcastReceiver`, or a notification tap that cold-starts the app after it was fully closed, use `showFromNotification(context)` instead — it adds `FLAG_ACTIVITY_NEW_TASK` so the chat screen can be launched from an application context.
+
+```kotlin
+class LiveConnectMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(message: RemoteMessage) {
+        // Build a PendingIntent that opens the chat screen directly.
+        val intent = Intent(this, MainActivity::class.java)
+            .putExtra("openChat", true)
+        // ... attach to the notification you post
+    }
+}
+
+// In MainActivity, once init() has completed:
+if (intent.getBooleanExtra("openChat", false)) {
+    LiveConnectChat.showFromNotification(this)
+}
+```
+
+`showFromNotification()` returns `false` if `init()` hasn't been called yet — the SDK needs the widget config and visitor profile before it can open the chat screen.
+
+> **Note:** Neither `show()` nor `showFromNotification()` will ever stack a duplicate chat screen. If the chat screen is already open (e.g. the app was backgrounded while chat was visible and the user taps another notification), `showFromNotification()` reuses the existing instance and brings it to the foreground; `show()` is a no-op, since chat is already in front of the caller. Check `LiveConnectChat.isChatScreenOpen` if you need to know the current state.
+
+---
+
+## Showing unread count outside the chat widget
+
+`LiveConnectChat.totalUnreadCount` is a `LiveData<Int>` you can observe from anywhere in your app — a bell icon in your toolbar, a bottom-nav badge, a home-screen tile — not just the built-in `FloatingChatButton` badge.
+
+```kotlin
+LiveConnectChat.totalUnreadCount.observe(this) { count ->
+    badge.isVisible = count > 0
+    badge.text = if (count > 99) "99+" else count.toString()
+}
+```
+
+The count is persisted to disk, so it's correct as soon as your app starts — even before the chat screen has ever been opened, and even for messages that arrived while the app was fully closed. It resets to zero whenever the chat screen is opened.
+
+### How the count is updated
+
+| Source | When it applies |
+|---|---|
+| `ticket:unread_count` socket event | Live, server-authoritative — only while the chat screen's socket is connected. |
+| `LiveConnectChat.registerIncomingPush(context, ticketId)` | Client-side increment — call from your FCM listener for messages received outside the chat screen (foreground, background, or fully closed). |
+
+Call `registerIncomingPush()` from your `FirebaseMessagingService` so the badge stays accurate in every app state:
+
+```kotlin
+class LiveConnectMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(message: RemoteMessage) {
+        LiveConnectChat.registerIncomingPush(this, message.data["ticketId"])
+        // ... then post the notification
+    }
+}
+```
+
+`registerIncomingPush()` is safe to call **before** `init()` — FCM starts your app's process to deliver a push even when the app is fully closed, and the count is written straight to `SharedPreferences` rather than relying on the SDK being initialized. `init()` reloads it from disk on the next launch, and the SDK also refreshes it every time the app returns to the foreground, so no extra wiring is needed on your end.
+
+> **Important:** Don't call `registerIncomingPush()` for the notification the user *tapped* to open chat — opening the chat screen already clears the count.
+
+---
+
 ## API reference
 
 ### `LiveConnectChat` — top-level singleton
@@ -209,11 +272,15 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
 | `init(context, widgetKey, visitorDetails, theme, callback)` | Full init with theme + completion callback |
 | `initSuspend(...)` | Coroutine-friendly variant — returns `ApiResult<Unit>` |
 | `show(context)` | Open the chat `Activity` |
+| `showFromNotification(context, showCloseButton = true)` | Open the chat `Activity` from a Service / Receiver / cold start — no Activity context needed. Returns `false` if `init()` hasn't run |
+| `registerIncomingPush(context, ticketId = null)` | Increment the unread badge for a push received outside the chat screen. Safe to call before `init()` |
 | `setTheme(theme)` | Override the theme at runtime |
 | `setFcmToken(token)` | Register the FCM device token |
 | `setFirebaseServiceAccount(map)` | Register the Firebase service account for admin push |
 | `isInitialized` | Has `init()` been called? |
 | `hasCompleteProfile` | Is the visitor profile complete? |
+| `isChatScreenOpen` | Is the chat screen currently on screen? |
+| `totalUnreadCount: LiveData<Int>` | Observe the total unread message count (persisted across app restarts) |
 | `themeVersion: LiveData<Int>` | Observe theme changes |
 
 ### `VisitorProfile`
@@ -248,9 +315,15 @@ The JitPack repository is missing from `settings.gradle.kts`. Add it under `depe
 **Push notifications don't arrive**
 Order of operations matters: call `setFirebaseServiceAccount(...)` **before** `setFcmToken(...)`. Also verify `google-services.json` is in the `app/` directory and the `com.google.gms.google-services` plugin is applied.
 
+**Chat doesn't open from a notification tap**
+Use `showFromNotification(context)`, not `show(context)`, from a `FirebaseMessagingService` or `BroadcastReceiver` — `show()` expects an Activity context. If it returns `false`, `init()` had not completed yet; call it from your Activity after init, or in your `Application.onCreate`.
+
+**Unread badge stays at zero**
+Call `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` from your `FirebaseMessagingService.onMessageReceived`. Without it, the count only updates from the socket, which is connected only while the chat screen is open.
+
 **Stale JitPack build**
 JitPack caches per commit SHA. If a tag was moved and you still see old behaviour, open
-`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.12` in a browser and click **Get it** to force a rebuild.
+`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.13` in a browser and click **Get it** to force a rebuild.
 
 ---
 
