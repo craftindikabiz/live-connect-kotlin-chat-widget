@@ -46,7 +46,7 @@ In your **app-module** `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.16")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.17")
 }
 ```
 
@@ -68,7 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.16")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.17")
 }
 ```
 
@@ -235,20 +235,17 @@ LiveConnectChat.totalUnreadCount.observe(this) { count ->
 }
 ```
 
-**This works out of the box — no FCM wiring required.** The SDK asks the server for the real count on `init()` and every time your app returns to the foreground, so the badge is correct as soon as your app starts and after messages arrive while it was backgrounded or fully closed. It resets to zero whenever the chat screen is opened.
+The count is tracked **locally** and persisted to `SharedPreferences` — it is never re-read from the server. Opening the chat screen zeroes it, and it stays at zero until the next push arrives.
 
 ### How the count is updated
 
 | Source | When it applies |
 |---|---|
-| **Server refresh** (automatic) | On `init()` and on every app foreground. Authoritative — this is what recovers messages received while the app was backgrounded or killed. No wiring needed. |
+| `LiveConnectChat.registerIncomingPush(context, ticketId)` | **Required** — client-side increment. Call it from your `FirebaseMessagingService`, or the badge will never move. |
 | `ticket:unread_count` socket event | Live, while the chat screen's socket is connected. |
-| `LiveConnectChat.registerIncomingPush(context, ticketId)` | **Optional.** Client-side increment for an instant bump while your app is in the *foreground* with chat closed, without waiting for the next refresh. |
+| Opening the chat screen | Clears the count to zero, in memory and on disk. |
 
-> [!NOTE]
-> **Why Android differs from the Flutter widget.** The backend sends a `notification` payload, and Android's FCM renders those itself when your app is backgrounded — it **never calls `onMessageReceived`**. So unlike Flutter (whose background isolate can count pushes), no Android client can tally background messages locally. The SDK gets the same result a better way: it asks the server, which also self-heals any drift.
-
-`registerIncomingPush()` is only worth wiring if you want the badge to tick up the instant a push lands while your app is open:
+You **must** wire `registerIncomingPush()` into your FCM service — without it nothing increments the badge:
 
 ```kotlin
 class LiveConnectMessagingService : FirebaseMessagingService() {
@@ -258,6 +255,11 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
     }
 }
 ```
+
+> [!IMPORTANT]
+> **Foreground pushes only.** The backend sends a `notification` payload, and Android's FCM renders those itself when your app is backgrounded or killed — it **never calls `onMessageReceived`**. So `registerIncomingPush()` cannot run then, and messages that arrive while your app is in the background are **not** counted. This is a platform limit, not a bug: unlike the Flutter widget — whose background isolate can tally pushes — no Android client can count background messages locally.
+>
+> If you need background counts, the backend must send **data-only** pushes (no `notification` block) so `onMessageReceived` fires in every app state, and your app must then render each notification itself.
 
 > **Important:** Don't call `registerIncomingPush()` for the notification the user *tapped* to open chat — opening the chat screen already clears the count.
 
@@ -275,7 +277,7 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
 | `initSuspend(...)` | Coroutine-friendly variant — returns `ApiResult<Unit>` |
 | `show(context)` | Open the chat `Activity` |
 | `showFromNotification(context, showCloseButton = true)` | Open the chat `Activity` from a Service / Receiver / cold start — no Activity context needed. Returns `false` if `init()` hasn't run |
-| `registerIncomingPush(context, ticketId = null)` | Optional — instantly bump the unread badge for a foreground push, instead of waiting for the next server refresh. Safe to call before `init()` |
+| `registerIncomingPush(context, ticketId = null)` | Increment the unread badge for a foreground push. Required — nothing else moves the badge. Safe to call before `init()` |
 | `setTheme(theme)` | Override the theme at runtime |
 | `setFcmToken(token)` | Register the FCM device token |
 | `setFirebaseServiceAccount(map)` | Register the Firebase service account for admin push |
@@ -321,11 +323,11 @@ Order of operations matters: call `setFirebaseServiceAccount(...)` **before** `s
 Use `showFromNotification(context)`, not `show(context)`, from a `FirebaseMessagingService` or `BroadcastReceiver` — `show()` expects an Activity context. If it returns `false`, `init()` had not completed yet; call it from your Activity after init, or in your `Application.onCreate`.
 
 **Unread badge stays at zero**
-The count refreshes from the server on `init()` and on every app foreground, so check that `init()` completed and the visitor profile is set (`hasCompleteProfile`) — the refresh needs the visitor's email to query their tickets. Note the badge only counts **open** tickets; a resolved conversation never keeps it lit. For an instant bump on a foreground push (rather than waiting for the next refresh), wire `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` into `onMessageReceived`.
+Call `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` from your `FirebaseMessagingService.onMessageReceived` — without it nothing increments the badge. Note this only fires for **foreground** pushes: Android renders backgrounded notification pushes itself and never calls `onMessageReceived`, so messages received while your app is backgrounded are not counted.
 
 **Stale JitPack build**
 JitPack caches per commit SHA. If a tag was moved and you still see old behaviour, open
-`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.16` in a browser and click **Get it** to force a rebuild.
+`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.17` in a browser and click **Get it** to force a rebuild.
 
 ---
 

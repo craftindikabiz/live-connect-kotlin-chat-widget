@@ -73,24 +73,6 @@ internal object UnreadCountService {
         Log.d(TAG, "Unread counts loaded from storage: $stored")
     }
 
-    /**
-     * Replace every count with the server's authoritative per-ticket unread counts.
-     *
-     * Unlike [registerIncomingPush], which increments locally and can drift, this is
-     * the server's own tally, so it self-corrects: counts missed while the app was
-     * backgrounded appear, and counts for messages read elsewhere disappear.
-     */
-    @JvmStatic
-    fun replaceAllFromServer(serverCounts: Map<String, Int>) {
-        synchronized(counts) {
-            counts.clear()
-            counts.putAll(serverCounts)
-        }
-        publishTotal()
-        persist(serverCounts)
-        Log.d(TAG, "Unread counts refreshed from server: $serverCounts")
-    }
-
     /** Handle an unread count event from the socket (server-authoritative). */
     @JvmStatic
     fun handleUnreadCountEvent(ticketId: String, unreadCount: Int) {

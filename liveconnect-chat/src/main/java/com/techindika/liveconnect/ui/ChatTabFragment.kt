@@ -327,17 +327,13 @@ class ChatTabFragment : Fragment() {
     }
 
     /**
-     * Tell the server the visitor has read this ticket's agent messages.
+     * Tell the server the visitor has read this ticket's agent messages, which is what
+     * turns the agent's read ticks (✓✓). The local badge doesn't depend on this — it's
+     * cleared directly by [UnreadCountService.markAllRead].
      *
-     * This is what drives the server's `unreadMessageCount` to zero — and clearing the
-     * badge locally via [UnreadCountService.markAllRead] is *not* enough on its own,
-     * because [LiveConnectChat] re-reads that count from the server on every app
-     * foreground. If the server still counts these messages unread, the badge comes
-     * straight back. It also drives the agent's read ticks.
-     *
-     * Emitted on socket connect rather than only when the screen opens: the chat
-     * screen is up well before the socket is, so an emit at open time is swallowed by
-     * the `isConnected` guard in [SocketService.emit] and never retried.
+     * Emitted on socket connect rather than only when the screen opens: the chat screen
+     * is up well before the socket is, so an emit at open time is swallowed by the
+     * `isConnected` guard in [SocketService.emit] and never retried.
      */
     private fun markConversationRead(ticketId: String? = null) {
         val id = ticketId ?: conversationManager.activeTicketId ?: return

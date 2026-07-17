@@ -23,9 +23,7 @@ data class WidgetTicket(
     val resolvedAt: String? = null,
     val resolvedBy: String? = null,
     val createdAt: String? = null,
-    val updatedAt: String? = null,
-    /** Agent messages the visitor hasn't read yet. Server-computed; tickets list only. */
-    val unreadMessageCount: Int = 0
+    val updatedAt: String? = null
 ) {
     companion object {
         @JvmStatic
@@ -53,8 +51,7 @@ data class WidgetTicket(
                 resolvedAt = json.optStringOrNull("resolvedAt"),
                 resolvedBy = json.optStringOrNull("resolvedBy"),
                 createdAt = json.optStringOrNull("createdAt"),
-                updatedAt = json.optStringOrNull("updatedAt"),
-                unreadMessageCount = json.optInt("unreadMessageCount", 0)
+                updatedAt = json.optStringOrNull("updatedAt")
             )
         }
     }

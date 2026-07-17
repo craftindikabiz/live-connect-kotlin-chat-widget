@@ -11,7 +11,6 @@ import androidx.lifecycle.MutableLiveData
 import com.techindika.liveconnect.callback.InitCallback
 import com.techindika.liveconnect.model.VisitorProfile
 import com.techindika.liveconnect.model.WidgetConfig
-import com.techindika.liveconnect.model.WidgetTicketsResult
 import com.techindika.liveconnect.network.ApiResult
 import com.techindika.liveconnect.network.RetrofitClient
 import com.techindika.liveconnect.service.UnreadCountService
@@ -250,63 +249,15 @@ object LiveConnectChat {
             registerFcmToken(pendingToken)
         }
 
-        // Cold start (including a launch from a notification tap): the badge must be
-        // right before the visitor has opened chat even once this session.
-        refreshUnreadCountFromServer()
-
         ApiResult.success(Unit)
     }
 
     /**
-     * Pull the authoritative unread count from the server and publish it to
-     * [totalUnreadCount].
+     * Register (once) an app-lifecycle listener that reloads the unread count from
+     * storage whenever the app returns to the foreground.
      *
-     * Android never invokes `onMessageReceived` for notification-payload pushes while
-     * the app is backgrounded — the OS renders those itself — so unlike the Flutter
-     * widget, whose background isolate can tally them, this client cannot count
-     * background messages locally at all. So we ask the server on the way back in:
-     * the tickets endpoint reports `unreadMessageCount` per ticket, the same figure
-     * the socket's `ticket:unread_count` event carries.
-     *
-     * Only open tickets count — a resolved conversation holding unread agent messages
-     * would otherwise pin the badge on forever.
-     */
-    private suspend fun refreshUnreadCountFromServer() {
-        // Chat is on screen: the visitor is reading, the socket drives the count live,
-        // and ChatActivity clears it. Overwriting here would resurrect a badge they
-        // just cleared.
-        if (_chatScreenOpen) return
-        val widgetKey = _widgetKey ?: return
-        val email = _visitorProfile?.email ?: return
-
-        try {
-            val response = RetrofitClient.apiService.fetchTickets(
-                widgetKey = widgetKey,
-                email = email
-            )
-            val json = JSONObject(response.string())
-            if (json.optString("status", "") != "success") return
-            val data = json.optJSONObject("data") ?: return
-
-            val counts = WidgetTicketsResult.fromJson(data).tickets
-                .filter { it.status == "open" && it.unreadMessageCount > 0 }
-                .associate { it.id to it.unreadMessageCount }
-
-            // The visitor may have opened chat while this request was in flight.
-            if (_chatScreenOpen) return
-            UnreadCountService.replaceAllFromServer(counts)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to refresh unread count from server: ${e.message}")
-        }
-    }
-
-    /**
-     * Register (once) an app-lifecycle listener that refreshes the unread count
-     * whenever the app returns to the foreground.
-     *
-     * Two stages, deliberately: the persisted count paints the badge immediately with
-     * no network wait, then the server's authoritative count corrects it — which is
-     * what recovers messages that arrived while the app was backgrounded.
+     * The count is local and persisted, never re-read from the server, so opening the
+     * chat screen clears it for good — see [UnreadCountService].
      */
     private fun ensureUnreadCountResumeRefresh(context: Context) {
         if (_resumeRefreshRegistered) return
@@ -317,9 +268,8 @@ object LiveConnectChat {
 
             override fun onActivityStarted(activity: Activity) {
                 if (startedActivities == 0) {
-                    Log.d(TAG, "App resumed — refreshing unread count")
+                    Log.d(TAG, "App resumed — reloading unread count from storage")
                     UnreadCountService.initFromStorage(activity.applicationContext)
-                    scope.launch(Dispatchers.IO) { refreshUnreadCountFromServer() }
                 }
                 startedActivities++
             }
