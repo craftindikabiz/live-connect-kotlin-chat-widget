@@ -46,7 +46,7 @@ In your **app-module** `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.14")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.15")
 }
 ```
 
@@ -68,7 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.14")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.15")
 }
 ```
 
@@ -235,16 +235,20 @@ LiveConnectChat.totalUnreadCount.observe(this) { count ->
 }
 ```
 
-The count is persisted to disk, so it's correct as soon as your app starts — even before the chat screen has ever been opened, and even for messages that arrived while the app was fully closed. It resets to zero whenever the chat screen is opened.
+**This works out of the box — no FCM wiring required.** The SDK asks the server for the real count on `init()` and every time your app returns to the foreground, so the badge is correct as soon as your app starts and after messages arrive while it was backgrounded or fully closed. It resets to zero whenever the chat screen is opened.
 
 ### How the count is updated
 
 | Source | When it applies |
 |---|---|
-| `ticket:unread_count` socket event | Live, server-authoritative — only while the chat screen's socket is connected. |
-| `LiveConnectChat.registerIncomingPush(context, ticketId)` | Client-side increment — call from your FCM listener for messages received outside the chat screen (foreground, background, or fully closed). |
+| **Server refresh** (automatic) | On `init()` and on every app foreground. Authoritative — this is what recovers messages received while the app was backgrounded or killed. No wiring needed. |
+| `ticket:unread_count` socket event | Live, while the chat screen's socket is connected. |
+| `LiveConnectChat.registerIncomingPush(context, ticketId)` | **Optional.** Client-side increment for an instant bump while your app is in the *foreground* with chat closed, without waiting for the next refresh. |
 
-Call `registerIncomingPush()` from your `FirebaseMessagingService` so the badge stays accurate in every app state:
+> [!NOTE]
+> **Why Android differs from the Flutter widget.** The backend sends a `notification` payload, and Android's FCM renders those itself when your app is backgrounded — it **never calls `onMessageReceived`**. So unlike Flutter (whose background isolate can count pushes), no Android client can tally background messages locally. The SDK gets the same result a better way: it asks the server, which also self-heals any drift.
+
+`registerIncomingPush()` is only worth wiring if you want the badge to tick up the instant a push lands while your app is open:
 
 ```kotlin
 class LiveConnectMessagingService : FirebaseMessagingService() {
@@ -254,8 +258,6 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
     }
 }
 ```
-
-`registerIncomingPush()` is safe to call **before** `init()` — FCM starts your app's process to deliver a push even when the app is fully closed, and the count is written straight to `SharedPreferences` rather than relying on the SDK being initialized. `init()` reloads it from disk on the next launch, and the SDK also refreshes it every time the app returns to the foreground, so no extra wiring is needed on your end.
 
 > **Important:** Don't call `registerIncomingPush()` for the notification the user *tapped* to open chat — opening the chat screen already clears the count.
 
@@ -273,7 +275,7 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
 | `initSuspend(...)` | Coroutine-friendly variant — returns `ApiResult<Unit>` |
 | `show(context)` | Open the chat `Activity` |
 | `showFromNotification(context, showCloseButton = true)` | Open the chat `Activity` from a Service / Receiver / cold start — no Activity context needed. Returns `false` if `init()` hasn't run |
-| `registerIncomingPush(context, ticketId = null)` | Increment the unread badge for a push received outside the chat screen. Safe to call before `init()` |
+| `registerIncomingPush(context, ticketId = null)` | Optional — instantly bump the unread badge for a foreground push, instead of waiting for the next server refresh. Safe to call before `init()` |
 | `setTheme(theme)` | Override the theme at runtime |
 | `setFcmToken(token)` | Register the FCM device token |
 | `setFirebaseServiceAccount(map)` | Register the Firebase service account for admin push |
@@ -319,11 +321,11 @@ Order of operations matters: call `setFirebaseServiceAccount(...)` **before** `s
 Use `showFromNotification(context)`, not `show(context)`, from a `FirebaseMessagingService` or `BroadcastReceiver` — `show()` expects an Activity context. If it returns `false`, `init()` had not completed yet; call it from your Activity after init, or in your `Application.onCreate`.
 
 **Unread badge stays at zero**
-Call `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` from your `FirebaseMessagingService.onMessageReceived`. Without it, the count only updates from the socket, which is connected only while the chat screen is open.
+The count refreshes from the server on `init()` and on every app foreground, so check that `init()` completed and the visitor profile is set (`hasCompleteProfile`) — the refresh needs the visitor's email to query their tickets. Note the badge only counts **open** tickets; a resolved conversation never keeps it lit. For an instant bump on a foreground push (rather than waiting for the next refresh), wire `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` into `onMessageReceived`.
 
 **Stale JitPack build**
 JitPack caches per commit SHA. If a tag was moved and you still see old behaviour, open
-`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.14` in a browser and click **Get it** to force a rebuild.
+`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.15` in a browser and click **Get it** to force a rebuild.
 
 ---
 
