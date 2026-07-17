@@ -294,6 +294,9 @@ class ChatTabFragment : Fragment() {
         socketService.onConnect = {
             isSocketConnected = true
             isSocketConnecting = false
+            // The socket is only up now — this is the first chance to tell the server
+            // the visitor is reading, which is what zeroes the unread badge for good.
+            markConversationRead()
         }
     }
 
@@ -321,6 +324,29 @@ class ChatTabFragment : Fragment() {
             isSocketConnected = true
             isSocketConnecting = false
         }
+    }
+
+    /**
+     * Tell the server the visitor has read this ticket's agent messages.
+     *
+     * This is what drives the server's `unreadMessageCount` to zero — and clearing the
+     * badge locally via [UnreadCountService.markAllRead] is *not* enough on its own,
+     * because [LiveConnectChat] re-reads that count from the server on every app
+     * foreground. If the server still counts these messages unread, the badge comes
+     * straight back. It also drives the agent's read ticks.
+     *
+     * Emitted on socket connect rather than only when the screen opens: the chat
+     * screen is up well before the socket is, so an emit at open time is swallowed by
+     * the `isConnected` guard in [SocketService.emit] and never retried.
+     */
+    private fun markConversationRead(ticketId: String? = null) {
+        val id = ticketId ?: conversationManager.activeTicketId ?: return
+        if (!socketService.isConnected) return
+        socketService.emit(
+            SocketService.EMIT_MESSAGE_READ,
+            JSONObject().apply { put("ticketId", id) }
+        )
+        Log.d(TAG, "Emitted message:read for ticket $id")
     }
 
     private fun registerSocketEventHandlers() {
@@ -377,6 +403,10 @@ class ChatTabFragment : Fragment() {
             socketService.emit(SocketService.EMIT_MESSAGE_DELIVERED, JSONObject().apply {
                 put("ticketId", event.ticketId)
             })
+
+            // The server has confirmed the ticket, so anything the agent sent while we
+            // were away is on screen now — mark it read so the badge doesn't return.
+            if (isResumed) markConversationRead(event.ticketId)
         }
 
         socketEventManager.onTicketResolved = handler@{ event ->
@@ -414,6 +444,11 @@ class ChatTabFragment : Fragment() {
                     put("ticketId", ticketId)
                 })
             }
+
+            // Arrived while the visitor is looking at the conversation — that's read,
+            // not merely delivered. Without this the server keeps counting it unread
+            // and the badge reappears on the next foreground refresh.
+            if (isResumed) markConversationRead()
         }
 
         socketEventManager.onMessageStatusUpdated = { event ->

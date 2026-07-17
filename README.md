@@ -46,7 +46,7 @@ In your **app-module** `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.15")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.16")
 }
 ```
 
@@ -68,7 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.15")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.16")
 }
 ```
 
@@ -325,7 +325,7 @@ The count refreshes from the server on `init()` and on every app foreground, so 
 
 **Stale JitPack build**
 JitPack caches per commit SHA. If a tag was moved and you still see old behaviour, open
-`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.15` in a browser and click **Get it** to force a rebuild.
+`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.16` in a browser and click **Get it** to force a rebuild.
 
 ---
 
