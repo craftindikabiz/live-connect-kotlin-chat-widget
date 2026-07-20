@@ -46,7 +46,7 @@ In your **app-module** `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.17")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.18")
 }
 ```
 
@@ -68,7 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.17")
+    implementation("com.github.craftindikabiz:live-connect-kotlin-chat-widget:v1.0.18")
 }
 ```
 
@@ -235,17 +235,18 @@ LiveConnectChat.totalUnreadCount.observe(this) { count ->
 }
 ```
 
-The count is tracked **locally** and persisted to `SharedPreferences` — it is never re-read from the server. Opening the chat screen zeroes it, and it stays at zero until the next push arrives.
+The count is **server-authoritative**. It is persisted to `SharedPreferences` so the badge paints immediately on launch with no network wait, then corrected from the server each time your app comes to the foreground. Opening the chat screen zeroes it, and it stays at zero until a genuinely newer message arrives.
 
 ### How the count is updated
 
 | Source | When it applies |
 |---|---|
-| `LiveConnectChat.registerIncomingPush(context, ticketId)` | **Required** — client-side increment. Call it from your `FirebaseMessagingService`, or the badge will never move. |
+| Server refresh | On `init()` and every time the app returns to the foreground. This is what counts messages that arrived while your app was backgrounded or killed. |
+| `LiveConnectChat.registerIncomingPush(context, ticketId)` | Optional — increments right away for a **foreground** push, so the badge moves without waiting for the next refresh. |
 | `ticket:unread_count` socket event | Live, while the chat screen's socket is connected. |
-| Opening the chat screen | Clears the count to zero, in memory and on disk. |
+| Opening the chat screen | Clears the count to zero and records that everything currently on the server has been read. |
 
-You **must** wire `registerIncomingPush()` into your FCM service — without it nothing increments the badge:
+Wiring `registerIncomingPush()` into your FCM service is optional but recommended — it makes the badge respond instantly to a foreground push instead of on the next foreground refresh:
 
 ```kotlin
 class LiveConnectMessagingService : FirebaseMessagingService() {
@@ -256,10 +257,10 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
 }
 ```
 
-> [!IMPORTANT]
-> **Foreground pushes only.** The backend sends a `notification` payload, and Android's FCM renders those itself when your app is backgrounded or killed — it **never calls `onMessageReceived`**. So `registerIncomingPush()` cannot run then, and messages that arrive while your app is in the background are **not** counted. This is a platform limit, not a bug: unlike the Flutter widget — whose background isolate can tally pushes — no Android client can count background messages locally.
+> [!NOTE]
+> **`registerIncomingPush()` only ever fires in the foreground.** The backend sends a `notification` payload, and Android's FCM renders those itself when your app is backgrounded or killed — it **never calls `onMessageReceived`**. No Android client can tally background pushes locally.
 >
-> If you need background counts, the backend must send **data-only** pushes (no `notification` block) so `onMessageReceived` fires in every app state, and your app must then render each notification itself.
+> Background messages are still counted: the widget asks the server for the current count when your app next comes to the foreground. The badge is therefore correct whenever it is on screen, which is the only time it is visible — it just doesn't tick up live while your app is in the background.
 
 > **Important:** Don't call `registerIncomingPush()` for the notification the user *tapped* to open chat — opening the chat screen already clears the count.
 
@@ -277,7 +278,7 @@ class LiveConnectMessagingService : FirebaseMessagingService() {
 | `initSuspend(...)` | Coroutine-friendly variant — returns `ApiResult<Unit>` |
 | `show(context)` | Open the chat `Activity` |
 | `showFromNotification(context, showCloseButton = true)` | Open the chat `Activity` from a Service / Receiver / cold start — no Activity context needed. Returns `false` if `init()` hasn't run |
-| `registerIncomingPush(context, ticketId = null)` | Increment the unread badge for a foreground push. Required — nothing else moves the badge. Safe to call before `init()` |
+| `registerIncomingPush(context, ticketId = null)` | Increment the unread badge for a foreground push. Optional — the server refresh also updates it. Safe to call before `init()` |
 | `setTheme(theme)` | Override the theme at runtime |
 | `setFcmToken(token)` | Register the FCM device token |
 | `setFirebaseServiceAccount(map)` | Register the Firebase service account for admin push |
@@ -323,11 +324,11 @@ Order of operations matters: call `setFirebaseServiceAccount(...)` **before** `s
 Use `showFromNotification(context)`, not `show(context)`, from a `FirebaseMessagingService` or `BroadcastReceiver` — `show()` expects an Activity context. If it returns `false`, `init()` had not completed yet; call it from your Activity after init, or in your `Application.onCreate`.
 
 **Unread badge stays at zero**
-Call `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` from your `FirebaseMessagingService.onMessageReceived` — without it nothing increments the badge. Note this only fires for **foreground** pushes: Android renders backgrounded notification pushes itself and never calls `onMessageReceived`, so messages received while your app is backgrounded are not counted.
+The badge is refreshed from the server on `init()` and on each foreground, so check that `init()` succeeded and that the visitor profile has an **email** set — the refresh needs it to look up tickets and silently does nothing without one. Only tickets with status `open` are counted. For the badge to move instantly on a foreground push, also call `LiveConnectChat.registerIncomingPush(context, message.data["ticketId"])` from your `FirebaseMessagingService.onMessageReceived`.
 
 **Stale JitPack build**
 JitPack caches per commit SHA. If a tag was moved and you still see old behaviour, open
-`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.17` in a browser and click **Get it** to force a rebuild.
+`https://jitpack.io/#craftindikabiz/live-connect-kotlin-chat-widget/v1.0.18` in a browser and click **Get it** to force a rebuild.
 
 ---
 

@@ -30,11 +30,25 @@ internal object UnreadCountService {
     private const val TAG = "LiveConnect"
     private const val PREFS_NAME = "liveconnect_unread"
     private const val KEY_COUNTS = "liveconnect_unread_counts"
+    private const val KEY_WATERMARKS = "liveconnect_read_watermarks"
 
     /** Bucket used for pushes that don't carry a ticketId. */
     private const val UNKNOWN_TICKET_KEY = "_unknown"
 
     private val counts = mutableMapOf<String, Int>()
+
+    /**
+     * ticketId → the ticket's `lastMessageAt` at the moment the visitor last read it.
+     *
+     * A server count is only believed once a ticket's `lastMessageAt` has *moved past*
+     * this mark. That's what makes opening the chat screen stick: the server keeps
+     * reporting messages unread until its own read receipt lands, and without this the
+     * next refresh would put the badge straight back.
+     *
+     * Server timestamps are compared to each other and never to the device clock, so
+     * clock skew can't corrupt it.
+     */
+    private val readWatermarks = mutableMapOf<String, String>()
 
     private val _totalUnreadCount = MutableLiveData(0)
 
@@ -65,12 +79,58 @@ internal object UnreadCountService {
     fun initFromStorage(context: Context) {
         appContext = context.applicationContext
         val stored = readPersisted(context.applicationContext)
+        val marks = readPersistedWatermarks(context.applicationContext)
         synchronized(counts) {
             counts.clear()
             counts.putAll(stored)
+            readWatermarks.clear()
+            readWatermarks.putAll(marks)
         }
         publishTotal()
-        Log.d(TAG, "Unread counts loaded from storage: $stored")
+        Log.d(TAG, "Unread counts loaded from storage: $stored (watermarks: $marks)")
+    }
+
+    /**
+     * Adopt the server's per-ticket unread counts, ignoring any ticket the visitor has
+     * already read (see [readWatermarks]).
+     *
+     * @param serverCounts ticketId → unread count reported by the server.
+     * @param lastMessageAt ticketId → the ticket's current `lastMessageAt`.
+     */
+    @JvmStatic
+    fun applyServerCounts(
+        serverCounts: Map<String, Int>,
+        lastMessageAt: Map<String, String>
+    ) {
+        val accepted = serverCounts.filter { (ticketId, count) ->
+            count > 0 && lastMessageAt[ticketId] != readWatermarks[ticketId]
+        }
+        synchronized(counts) {
+            counts.clear()
+            counts.putAll(accepted)
+        }
+        publishTotal()
+        persist(accepted)
+        Log.d(TAG, "Applied server counts: $accepted (server said $serverCounts)")
+    }
+
+    /**
+     * Record that everything the server currently holds for these tickets has been read.
+     *
+     * Called after the visitor leaves the chat screen, with the tickets' current
+     * `lastMessageAt`. Any later refresh reporting the same `lastMessageAt` is a stale
+     * count and gets ignored; only a genuinely newer message re-lights the badge.
+     */
+    @JvmStatic
+    fun setReadWatermarks(lastMessageAt: Map<String, String>) {
+        synchronized(counts) {
+            readWatermarks.putAll(lastMessageAt)
+            counts.clear()
+        }
+        publishTotal()
+        persist(emptyMap())
+        persistWatermarks()
+        Log.d(TAG, "Read watermarks set: $lastMessageAt")
     }
 
     /** Handle an unread count event from the socket (server-authoritative). */
@@ -157,9 +217,22 @@ internal object UnreadCountService {
         persist(emptyMap())
     }
 
-    /** Reset all counts. Alias of [markAllRead]. */
+    /**
+     * Wipe all state, read watermarks included.
+     *
+     * Distinct from [markAllRead], which clears the counts but *keeps* the watermarks —
+     * those are the record of what the visitor has already read.
+     */
     @JvmStatic
-    fun reset() = markAllRead()
+    fun reset() {
+        synchronized(counts) {
+            counts.clear()
+            readWatermarks.clear()
+        }
+        publishTotal()
+        persist(emptyMap())
+        persistWatermarks()
+    }
 
     // ── Internals ──
 
@@ -174,6 +247,30 @@ internal object UnreadCountService {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to persist unread counts: ${e.message}")
         }
+    }
+
+    private fun persistWatermarks() {
+        val ctx = appContext ?: return
+        try {
+            val snapshot = synchronized(counts) { readWatermarks.toMap() }
+            val json = JSONObject().apply { snapshot.forEach { (k, v) -> put(k, v) } }
+            prefs(ctx).edit().putString(KEY_WATERMARKS, json.toString()).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to persist read watermarks: ${e.message}")
+        }
+    }
+
+    private fun readPersistedWatermarks(context: Context): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        try {
+            val raw = prefs(context).getString(KEY_WATERMARKS, null)
+            if (raw.isNullOrEmpty()) return result
+            val json = JSONObject(raw)
+            json.keys().forEach { key -> result[key] = json.optString(key, "") }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load read watermarks: ${e.message}")
+        }
+        return result
     }
 
     private fun readPersisted(context: Context): MutableMap<String, Int> {

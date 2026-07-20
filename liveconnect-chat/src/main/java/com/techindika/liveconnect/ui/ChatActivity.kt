@@ -180,6 +180,10 @@ class ChatActivity : AppCompatActivity() {
     override fun onDestroy() {
         LiveConnectChat.chatScreenOpen = false
         UnreadCountService.markAllRead()
+        // Snapshot what the server currently holds as "read", so the foreground refresh
+        // can't hand the badge back — the server keeps counting these unread until its
+        // own read receipt lands.
+        LiveConnectChat.onChatScreenClosed()
         super.onDestroy()
     }
 
