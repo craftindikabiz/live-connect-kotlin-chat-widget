@@ -8,4 +8,13 @@
         <item name="android:statusBarColor">@color/lc_white</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
+
+    <!-- Full-screen black backdrop for the tap-to-preview image viewer. -->
+    <style name="Theme.LiveConnect.ImagePreview" parent="Theme.MaterialComponents.Dialog.Fullscreen">
+        <item name="android:windowBackground">@color/lc_black</item>
+        <item name="android:statusBarColor">@color/lc_black</item>
+        <item name="android:navigationBarColor">@color/lc_black</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
 </resources>

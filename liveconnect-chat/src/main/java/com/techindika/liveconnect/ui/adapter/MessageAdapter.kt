@@ -1,5 +1,7 @@
 package com.techindika.liveconnect.ui.adapter
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.view.LayoutInflater
@@ -8,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -17,6 +20,7 @@ import com.techindika.liveconnect.R
 import com.techindika.liveconnect.model.Message
 import com.techindika.liveconnect.model.MessageSender
 import com.techindika.liveconnect.model.MessageStatus
+import com.techindika.liveconnect.ui.ImagePreviewDialogFragment
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -114,6 +118,10 @@ internal class MessageAdapter(
                     .load(attachment.filePath)
                     .centerCrop()
                     .into(attachmentImage)
+                // Tap the thumbnail to see the full-size image.
+                attachmentImage.setOnClickListener { v ->
+                    openImagePreview(v, attachment.filePath)
+                }
             } else if (attachment != null) {
                 attachmentImage.visibility = View.GONE
                 attachmentDoc.visibility = View.VISIBLE
@@ -126,6 +134,7 @@ internal class MessageAdapter(
             } else {
                 attachmentImage.visibility = View.GONE
                 attachmentDoc.visibility = View.GONE
+                attachmentImage.setOnClickListener(null)
                 attachmentDoc.setOnClickListener(null)
             }
 
@@ -158,6 +167,10 @@ internal class MessageAdapter(
                     .load(attachment.filePath)
                     .centerCrop()
                     .into(attachmentImage)
+                // Tap the thumbnail to see the full-size image.
+                attachmentImage.setOnClickListener { v ->
+                    openImagePreview(v, attachment.filePath)
+                }
             } else if (attachment != null) {
                 attachmentImage.visibility = View.GONE
                 attachmentDoc.visibility = View.VISIBLE
@@ -169,6 +182,7 @@ internal class MessageAdapter(
             } else {
                 attachmentImage.visibility = View.GONE
                 attachmentDoc.visibility = View.GONE
+                attachmentImage.setOnClickListener(null)
                 attachmentDoc.setOnClickListener(null)
             }
 
@@ -208,6 +222,30 @@ internal class MessageAdapter(
             } catch (_: Exception) {
                 // No matching activity / malformed url — ignore silently.
             }
+        }
+
+        /**
+         * Show the tapped image attachment full-screen via [ImagePreviewDialogFragment].
+         * Walks the view's context wrappers to find the hosting [FragmentActivity] —
+         * the RecyclerView's context is normally the Activity itself, but this stays
+         * safe if it's ever wrapped (e.g. a themed context). No-op if none is found or
+         * the fragment manager can no longer accept a transaction (e.g. mid-destroy).
+         */
+        private fun openImagePreview(anchor: View, url: String) {
+            if (url.isEmpty()) return
+            val activity = anchor.context.findFragmentActivity() ?: return
+            if (activity.supportFragmentManager.isStateSaved) return
+            ImagePreviewDialogFragment.newInstance(url)
+                .show(activity.supportFragmentManager, ImagePreviewDialogFragment.TAG)
+        }
+
+        private fun Context.findFragmentActivity(): FragmentActivity? {
+            var context = this
+            while (context is ContextWrapper) {
+                if (context is FragmentActivity) return context
+                context = context.baseContext
+            }
+            return null
         }
 
         private const val VIEW_TYPE_VISITOR = 0

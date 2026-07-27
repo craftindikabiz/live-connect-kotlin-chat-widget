@@ -34,4 +34,6 @@
     <string name="lc_status_offline">offline</string>
     <string name="lc_status_busy">busy</string>
     <string name="lc_status_away">away</string>
+    <string name="lc_image_preview">Image preview</string>
+    <string name="lc_close_preview">Close preview</string>
 </resources>
