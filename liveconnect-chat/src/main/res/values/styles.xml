@@ -9,8 +9,17 @@
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
 
-    <!-- Full-screen black backdrop for the tap-to-preview image viewer. -->
-    <style name="Theme.LiveConnect.ImagePreview" parent="Theme.MaterialComponents.Dialog.Fullscreen">
+    <!--
+      Full-screen black backdrop for the tap-to-preview image viewer.
+      MaterialComponents/AppCompat don't ship a ready-made ".Dialog.Fullscreen"
+      style (that only exists on the platform theme, android:Theme.Material.*),
+      so this builds one from the plain Dialog theme by hand.
+    -->
+    <style name="Theme.LiveConnect.ImagePreview" parent="Theme.MaterialComponents.Dialog">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowBackground">@color/lc_black</item>
         <item name="android:statusBarColor">@color/lc_black</item>
         <item name="android:navigationBarColor">@color/lc_black</item>
