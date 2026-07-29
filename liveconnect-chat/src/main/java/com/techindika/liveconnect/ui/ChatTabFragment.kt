@@ -556,7 +556,7 @@ class ChatTabFragment : Fragment() {
             // ListAdapter diffs asynchronously, so scrolling must wait for the
             // commit callback — scrolling synchronously here would target the old
             // item count and miss the just-arrived message.
-            messageAdapter.submitList(messages) {
+            messageAdapter.submitMessages(messages) {
                 messageRecyclerView.scrollToPosition(messageAdapter.itemCount - 1)
             }
         }

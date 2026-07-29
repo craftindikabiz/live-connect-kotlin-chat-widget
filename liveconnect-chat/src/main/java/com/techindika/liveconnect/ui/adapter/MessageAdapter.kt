@@ -22,21 +22,38 @@ import com.techindika.liveconnect.model.MessageSender
 import com.techindika.liveconnect.model.MessageStatus
 import com.techindika.liveconnect.ui.ImagePreviewDialogFragment
 import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 /**
  * RecyclerView adapter for chat messages with multiple view types.
+ *
+ * Messages are wrapped into [ChatListItem]s so that a "Today" / "Yesterday" /
+ * dated separator row can be synthesized wherever the calendar day changes —
+ * callers should submit messages via [submitMessages] rather than the raw
+ * [ListAdapter.submitList].
  */
 internal class MessageAdapter(
     private val theme: LiveConnectTheme
-) : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiffCallback()) {
+) : ListAdapter<ChatListItem, RecyclerView.ViewHolder>(MessageDiffCallback()) {
+
+    /**
+     * Builds the display list (messages + interleaved date headers) from raw
+     * chronological messages and submits it to the underlying [ListAdapter].
+     */
+    fun submitMessages(messages: List<Message>, commitCallback: Runnable? = null) {
+        submitList(buildDisplayList(messages), commitCallback)
+    }
 
     override fun getItemViewType(position: Int): Int {
-        val message = getItem(position)
-        return when (message.sender) {
-            MessageSender.VISITOR -> VIEW_TYPE_VISITOR
-            MessageSender.AGENT -> VIEW_TYPE_AGENT
-            MessageSender.SYSTEM, MessageSender.BROADCAST -> VIEW_TYPE_SYSTEM
+        return when (val item = getItem(position)) {
+            is ChatListItem.DateHeaderItem -> VIEW_TYPE_DATE_HEADER
+            is ChatListItem.MessageItem -> when (item.message.sender) {
+                MessageSender.VISITOR -> VIEW_TYPE_VISITOR
+                MessageSender.AGENT -> VIEW_TYPE_AGENT
+                MessageSender.SYSTEM, MessageSender.BROADCAST -> VIEW_TYPE_SYSTEM
+            }
         }
     }
 
@@ -51,6 +68,10 @@ internal class MessageAdapter(
                 val view = inflater.inflate(R.layout.item_message_agent, parent, false)
                 AgentViewHolder(view)
             }
+            VIEW_TYPE_DATE_HEADER -> {
+                val view = inflater.inflate(R.layout.item_date_header, parent, false)
+                DateHeaderViewHolder(view)
+            }
             else -> {
                 val view = inflater.inflate(R.layout.item_message_system, parent, false)
                 SystemViewHolder(view)
@@ -59,11 +80,16 @@ internal class MessageAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        val message = getItem(position)
-        when (holder) {
-            is VisitorViewHolder -> holder.bind(message, theme)
-            is AgentViewHolder -> holder.bind(message, theme)
-            is SystemViewHolder -> holder.bind(message, theme)
+        when (val item = getItem(position)) {
+            is ChatListItem.DateHeaderItem -> (holder as DateHeaderViewHolder).bind(item, theme)
+            is ChatListItem.MessageItem -> {
+                val message = item.message
+                when (holder) {
+                    is VisitorViewHolder -> holder.bind(message, theme)
+                    is AgentViewHolder -> holder.bind(message, theme)
+                    is SystemViewHolder -> holder.bind(message, theme)
+                }
+            }
         }
     }
 
@@ -190,6 +216,16 @@ internal class MessageAdapter(
         }
     }
 
+    class DateHeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val dateHeaderText: TextView = itemView.findViewById(R.id.dateHeaderText)
+
+        fun bind(item: ChatListItem.DateHeaderItem, theme: LiveConnectTheme) {
+            dateHeaderText.text = item.label
+            dateHeaderText.setTextColor(theme.systemMessageTextColor)
+            dateHeaderText.background?.setTint(theme.systemMessageBackgroundColor)
+        }
+    }
+
     class SystemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val systemText: TextView = itemView.findViewById(R.id.systemText)
 
@@ -251,6 +287,7 @@ internal class MessageAdapter(
         private const val VIEW_TYPE_VISITOR = 0
         private const val VIEW_TYPE_AGENT = 1
         private const val VIEW_TYPE_SYSTEM = 2
+        private const val VIEW_TYPE_DATE_HEADER = 3
 
         // Status icon colours on visitor (primary-coloured) bubbles.
         // Translucent white = sent/delivered, gold = read.
@@ -258,10 +295,55 @@ internal class MessageAdapter(
         private const val STATUS_COLOR_GOLD = 0xFFFFD700.toInt()
 
         private val TIME_FORMAT = ThreadLocal.withInitial { SimpleDateFormat("h:mm a", Locale.US) }
+
+        // Key used to detect a day boundary — not shown to the user.
+        private val DATE_KEY_FORMAT = ThreadLocal.withInitial { SimpleDateFormat("yyyyMMdd", Locale.US) }
+        // Shown for dates within the current calendar year, e.g. "July 29".
+        private val SAME_YEAR_DATE_FORMAT = ThreadLocal.withInitial { SimpleDateFormat("MMMM d", Locale.US) }
+        // Shown for dates in a past year, e.g. "July 29, 2025".
+        private val FULL_DATE_FORMAT = ThreadLocal.withInitial { SimpleDateFormat("MMMM d, yyyy", Locale.US) }
+
+        /**
+         * Wraps chronological messages into [ChatListItem]s, inserting a
+         * [ChatListItem.DateHeaderItem] before the first message of every new
+         * calendar day (assumes [messages] is ordered oldest-first).
+         */
+        internal fun buildDisplayList(messages: List<Message>): List<ChatListItem> {
+            val items = ArrayList<ChatListItem>(messages.size + 4)
+            var lastDateKey: String? = null
+            for (message in messages) {
+                val dateKey = DATE_KEY_FORMAT.get()!!.format(message.timestamp)
+                if (dateKey != lastDateKey) {
+                    items.add(ChatListItem.DateHeaderItem(dateKey, formatDateLabel(message.timestamp)))
+                    lastDateKey = dateKey
+                }
+                items.add(ChatListItem.MessageItem(message))
+            }
+            return items
+        }
+
+        /** "Today", "Yesterday", "July 29" (this year), or "July 29, 2025" (past years). */
+        private fun formatDateLabel(date: Date): String {
+            val today = Calendar.getInstance()
+            val target = Calendar.getInstance().apply { time = date }
+            val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+            return when {
+                isSameDay(today, target) -> "Today"
+                isSameDay(yesterday, target) -> "Yesterday"
+                today.get(Calendar.YEAR) == target.get(Calendar.YEAR) ->
+                    SAME_YEAR_DATE_FORMAT.get()!!.format(date)
+                else -> FULL_DATE_FORMAT.get()!!.format(date)
+            }
+        }
+
+        private fun isSameDay(a: Calendar, b: Calendar): Boolean =
+            a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
+                a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
     }
 }
 
-internal class MessageDiffCallback : DiffUtil.ItemCallback<Message>() {
-    override fun areItemsTheSame(oldItem: Message, newItem: Message) = oldItem.id == newItem.id
-    override fun areContentsTheSame(oldItem: Message, newItem: Message) = oldItem == newItem
+internal class MessageDiffCallback : DiffUtil.ItemCallback<ChatListItem>() {
+    override fun areItemsTheSame(oldItem: ChatListItem, newItem: ChatListItem) =
+        oldItem.itemId == newItem.itemId
+    override fun areContentsTheSame(oldItem: ChatListItem, newItem: ChatListItem) = oldItem == newItem
 }
