@@ -62,7 +62,8 @@ class ActivityTabFragment : Fragment() {
                 val response = RetrofitClient.apiService.fetchTickets(
                     widgetKey = widgetKey,
                     email = profile.email,
-                    phone = profile.phone
+                    phone = profile.phone,
+                    authorization = LiveConnectChat.visitorAuthHeader
                 )
                 val json = JSONObject(response.string())
                 val data = json.optJSONObject("data")

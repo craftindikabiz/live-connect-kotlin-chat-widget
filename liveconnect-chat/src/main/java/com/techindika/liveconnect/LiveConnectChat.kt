@@ -53,6 +53,7 @@ object LiveConnectChat {
     private var _firebaseServiceAccount: Map<String, Any>? = null
     private var _appContext: Context? = null
     private var _visitorId: String? = null
+    private var _visitorToken: String? = null
     @Volatile private var _chatScreenOpen = false
     private var _resumeRefreshRegistered = false
 
@@ -97,6 +98,28 @@ object LiveConnectChat {
 
     internal val appContext: Context? get() = _appContext
     internal val visitorId: String? get() = _visitorId
+
+    /** Signed visitor token, or null before the visitor has been identified. */
+    internal val visitorToken: String? get() = _visitorToken
+
+    /** `"Bearer <token>"` for the Authorization header, or null when unauthenticated. */
+    internal val visitorAuthHeader: String?
+        get() = _visitorToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+
+    /**
+     * Persist and cache a freshly issued visitor token (from the visitor upsert
+     * response or a `ticket:created` / `ticket:resumed` socket payload). No-op for
+     * a blank token so a missing value never clobbers a good one.
+     */
+    internal fun updateVisitorToken(token: String?) {
+        if (token.isNullOrBlank()) return
+        _visitorToken = token
+        val ctx = _appContext
+        val wk = _widgetKey
+        if (ctx != null && wk != null) {
+            VisitorProfileStore.saveToken(ctx, wk, token)
+        }
+    }
 
     /** Set by [ChatActivity] as it is created / destroyed. */
     internal var chatScreenOpen: Boolean
@@ -236,6 +259,8 @@ object LiveConnectChat {
 
         // Load visitor ID
         _visitorId = VisitorProfileStore.loadVisitorId(context.applicationContext, widgetKey)
+        // Load any persisted visitor token from a previous session
+        _visitorToken = VisitorProfileStore.loadToken(context.applicationContext, widgetKey)
 
         _initialized = true
         Log.d(TAG, "SDK initialized for widget: $widgetKey")
@@ -267,7 +292,8 @@ object LiveConnectChat {
         return try {
             val response = RetrofitClient.apiService.fetchTickets(
                 widgetKey = widgetKey,
-                email = email
+                email = email,
+                authorization = visitorAuthHeader
             )
             val json = JSONObject(response.string())
             if (json.optString("status", "") != "success") return null
@@ -568,6 +594,11 @@ object LiveConnectChat {
                     VisitorProfileStore.saveVisitorId(ctx, _widgetKey!!, visitorId)
                 }
             }
+            // Capture the signed visitor token issued by the server.
+            val token = data?.optString("token", "")
+            if (!token.isNullOrEmpty()) {
+                updateVisitorToken(token)
+            }
             Log.d(TAG, "Visitor registered: ${profile.email}")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register visitor: ${e.message}")
@@ -625,7 +656,7 @@ object LiveConnectChat {
             }
             val requestBody = body.toString()
                 .toRequestBody("application/json".toMediaType())
-            RetrofitClient.apiService.registerFcmToken(requestBody)
+            RetrofitClient.apiService.registerFcmToken(requestBody, visitorAuthHeader)
             Log.d(TAG, "FCM token registered (domain=$domain)")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register FCM token: ${e.message}")

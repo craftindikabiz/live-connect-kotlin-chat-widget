@@ -41,7 +41,10 @@ internal object VisitorProfileStore {
     }
 
     fun clear(context: Context, widgetKey: String) {
-        prefs(context).edit().remove(key(widgetKey)).apply()
+        prefs(context).edit()
+            .remove(key(widgetKey))
+            .remove("liveconnect_visitor_token_$widgetKey")
+            .apply()
     }
 
     /** Save visitor ID. */
@@ -52,5 +55,19 @@ internal object VisitorProfileStore {
     /** Load visitor ID. */
     fun loadVisitorId(context: Context, widgetKey: String): String? {
         return prefs(context).getString("liveconnect_visitor_id_$widgetKey", null)
+    }
+
+    /**
+     * Save the signed visitor token issued by the backend. This proves identity
+     * on history/message reads and FCM registration (which the server no longer
+     * authorises by bare email) and on socket reconnect.
+     */
+    fun saveToken(context: Context, widgetKey: String, token: String) {
+        prefs(context).edit().putString("liveconnect_visitor_token_$widgetKey", token).apply()
+    }
+
+    /** Load the signed visitor token, or null if none stored. */
+    fun loadToken(context: Context, widgetKey: String): String? {
+        return prefs(context).getString("liveconnect_visitor_token_$widgetKey", null)
     }
 }

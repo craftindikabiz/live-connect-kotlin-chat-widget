@@ -9,13 +9,17 @@ import com.techindika.liveconnect.model.AgentInfo
 /** Emitted when a new ticket is created. */
 data class TicketCreatedEvent(
     val ticketId: String,
-    val agent: AgentInfo?
+    val agent: AgentInfo?,
+    /** Signed visitor token issued by the server for this session. */
+    val token: String? = null
 )
 
 /** Emitted when an existing ticket is resumed. */
 data class TicketResumedEvent(
     val ticketId: String,
-    val agent: AgentInfo?
+    val agent: AgentInfo?,
+    /** Signed visitor token issued by the server for this session. */
+    val token: String? = null
 )
 
 /** Emitted when a ticket is resolved. */

@@ -134,7 +134,8 @@ internal class SocketEventManager(private val socketService: SocketService) {
         val agentJson = json.optJSONObject("agent")
         val ticketId = ticketJson?.optString("_id", "") ?: ""
         val agent = agentJson?.let { AgentInfo.fromJson(it) }
-        dispatch { onTicketCreated?.invoke(TicketCreatedEvent(ticketId, agent)) }
+        val token = json.optStringOrNull("token")
+        dispatch { onTicketCreated?.invoke(TicketCreatedEvent(ticketId, agent, token)) }
     }
 
     private fun handleTicketResumed(args: Array<Any>) {
@@ -143,7 +144,8 @@ internal class SocketEventManager(private val socketService: SocketService) {
         val agentJson = json.optJSONObject("agent")
         val ticketId = ticketJson?.optString("_id", "") ?: ""
         val agent = agentJson?.let { AgentInfo.fromJson(it) }
-        dispatch { onTicketResumed?.invoke(TicketResumedEvent(ticketId, agent)) }
+        val token = json.optStringOrNull("token")
+        dispatch { onTicketResumed?.invoke(TicketResumedEvent(ticketId, agent, token)) }
     }
 
     private fun handleTicketResolved(args: Array<Any>) {

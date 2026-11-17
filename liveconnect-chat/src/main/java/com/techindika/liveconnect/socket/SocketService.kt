@@ -28,7 +28,8 @@ internal class SocketService private constructor() {
         val phone: String,
         val firstMessage: String,
         val ticketId: String?,
-        val domain: String?
+        val domain: String?,
+        val token: String?
     )
 
     /**
@@ -62,7 +63,8 @@ internal class SocketService private constructor() {
         phone: String,
         firstMessage: String,
         ticketId: String? = null,
-        domain: String? = null
+        domain: String? = null,
+        token: String? = null
     ) {
         if (isConnecting || isConnected) {
             Log.d(TAG, "Already connected or connecting, skipping")
@@ -70,7 +72,7 @@ internal class SocketService private constructor() {
         }
         isConnecting = true
         lastConnectArgs =
-            ConnectArgs(widgetKey, name, email, phone, firstMessage, ticketId, domain)
+            ConnectArgs(widgetKey, name, email, phone, firstMessage, ticketId, domain, token)
 
         try {
             // Build auth payload
@@ -84,6 +86,8 @@ internal class SocketService private constructor() {
             )
             ticketId?.let { auth["ticketId"] = it }
             domain?.let { auth["domain"] = it }
+            // Signed visitor token authenticates the reconnect/resume when present.
+            token?.takeIf { it.isNotBlank() }?.let { auth["token"] = it }
 
             val options = IO.Options.builder()
                 .setAuth(auth)
@@ -206,7 +210,8 @@ internal class SocketService private constructor() {
             phone = args.phone,
             firstMessage = args.firstMessage,
             ticketId = args.ticketId,
-            domain = args.domain
+            domain = args.domain,
+            token = args.token
         )
     }
 

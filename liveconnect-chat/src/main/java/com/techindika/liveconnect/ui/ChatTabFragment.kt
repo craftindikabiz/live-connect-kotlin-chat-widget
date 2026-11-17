@@ -175,7 +175,8 @@ class ChatTabFragment : Fragment() {
                 val response = RetrofitClient.apiService.fetchTickets(
                     widgetKey = widgetKey,
                     email = profile.email,
-                    phone = profile.phone
+                    phone = profile.phone,
+                    authorization = LiveConnectChat.visitorAuthHeader
                 )
                 val json = JSONObject(response.string())
                 val data = json.optJSONObject("data")
@@ -250,7 +251,8 @@ class ChatTabFragment : Fragment() {
                 val response = RetrofitClient.apiService.fetchMessages(
                     widgetKey = widgetKey,
                     ticketId = ticketId,
-                    email = profile.email
+                    email = profile.email,
+                    authorization = LiveConnectChat.visitorAuthHeader
                 )
                 val json = JSONObject(response.string())
                 val data = json.optJSONObject("data")
@@ -288,7 +290,8 @@ class ChatTabFragment : Fragment() {
             // on the ticket and uses it (a) to find the visitor's FCM token and
             // (b) to resolve the per-widget Firebase creds when pushing. Without it
             // ticket.domain is null and pushes are silently skipped.
-            domain = LiveConnectChat.appContext?.packageName
+            domain = LiveConnectChat.appContext?.packageName,
+            token = LiveConnectChat.visitorToken
         )
 
         socketService.onConnect = {
@@ -317,7 +320,8 @@ class ChatTabFragment : Fragment() {
             firstMessage = text,
             // Send the package name as the ticket "domain" so the backend can push
             // notifications to this visitor later (see connectSocketToResume).
-            domain = LiveConnectChat.appContext?.packageName
+            domain = LiveConnectChat.appContext?.packageName,
+            token = LiveConnectChat.visitorToken
         )
 
         socketService.onConnect = {
@@ -349,6 +353,8 @@ class ChatTabFragment : Fragment() {
         socketEventManager.registerListeners()
 
         socketEventManager.onTicketCreated = handler@{ event ->
+            // Persist the signed visitor token delivered with this event.
+            LiveConnectChat.updateVisitorToken(event.token)
             val widgetKey = LiveConnectChat.widgetKey ?: return@handler
             val visitorId = LiveConnectChat.visitorId ?: ""
             val context = LiveConnectChat.appContext ?: return@handler
@@ -394,6 +400,8 @@ class ChatTabFragment : Fragment() {
         }
 
         socketEventManager.onTicketResumed = handler@{ event ->
+            // Persist the signed visitor token delivered with this event.
+            LiveConnectChat.updateVisitorToken(event.token)
             event.agent?.let { currentAgent = it }
 
             socketService.emit(SocketService.EMIT_MESSAGE_DELIVERED, JSONObject().apply {

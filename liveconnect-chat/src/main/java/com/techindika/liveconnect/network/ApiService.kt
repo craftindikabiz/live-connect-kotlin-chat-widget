@@ -23,24 +23,32 @@ internal interface ApiService {
         @Body body: RequestBody
     ): ResponseBody
 
-    /** Fetch tickets for a visitor (paginated). */
+    /**
+     * Fetch tickets for a visitor (paginated). Identity comes from the signed
+     * visitor token in the Authorization header; the server ignores the email.
+     */
     @GET("api/widgets/{widgetKey}/tickets")
     suspend fun fetchTickets(
         @Path("widgetKey") widgetKey: String,
         @Query("email") email: String,
         @Query("phone") phone: String? = null,
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 20
+        @Query("limit") limit: Int = 20,
+        @Header("Authorization") authorization: String? = null
     ): ResponseBody
 
-    /** Fetch messages for a specific ticket (paginated). */
+    /**
+     * Fetch messages for a specific ticket (paginated). Identity comes from the
+     * signed visitor token in the Authorization header.
+     */
     @GET("api/widgets/{widgetKey}/tickets/{ticketId}/messages")
     suspend fun fetchMessages(
         @Path("widgetKey") widgetKey: String,
         @Path("ticketId") ticketId: String,
         @Query("email") email: String,
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 50
+        @Query("limit") limit: Int = 50,
+        @Header("Authorization") authorization: String? = null
     ): ResponseBody
 
     /** Upload a file attachment. */
@@ -53,10 +61,14 @@ internal interface ApiService {
         @Header("X-Widget-Domain") domain: String? = null
     ): ResponseBody
 
-    /** Register FCM push token. */
+    /**
+     * Register FCM push token. Requires the signed visitor token in the
+     * Authorization header — the server no longer authorises by email here.
+     */
     @POST("api/widgets/fcm-token")
     suspend fun registerFcmToken(
-        @Body body: RequestBody
+        @Body body: RequestBody,
+        @Header("Authorization") authorization: String? = null
     ): ResponseBody
 
     /** Upload Firebase service account JSON. */
